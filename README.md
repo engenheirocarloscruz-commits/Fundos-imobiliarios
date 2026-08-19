@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FII Control - Cotação Real & Proventos B3</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f172a',
+                        cardBg: '#1e293b',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-slate-100 min-h-screen font-sans p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Cabeçalho -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-emerald-400">📊 FII Control - Cotação Real & Proventos</h1>
+                <p class="text-sm text-slate-400">Sincronizado via Brapi com dados oficiais B3 & Firebase</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <div class="bg-cardBg px-4 py-2 rounded-lg border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Patrimônio Investido</span>
+                    <span id="totalInvestedEl" class="text-base font-bold text-slate-200">R$ 0,00</span>
+                </div>
+                <div class="bg-cardBg px-4 py-2 rounded-lg border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Patrimônio de Mercado</span>
+                    <span id="totalMarketEl" class="text-base font-bold text-emerald-400">R$ 0,00</span>
+                </div>
+                <div class="bg-cardBg px-4 py-2 rounded-lg border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Proventos (Mês Selecionado)</span>
+                    <span id="totalDividendsEl" class="text-base font-bold text-cyan-400">R$ 0,00</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Grade Principal -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Coluna Esquerda: Form de Transações, Ajuste Manual & Notícias -->
+            <div class="space-y-6">
+                <!-- Form de Transação -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <h2 class="text-lg font-semibold mb-4 text-slate-200">➕ Adicionar Transação</h2>
+                    <form id="transactionForm" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Ticker do FII</label>
+                            <input type="text" id="ticker" required placeholder="Ex: MXRF11, KNIP11" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1">Tipo</label>
+                                <select id="type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                                    <option value="BUY">Compra</option>
+                                    <option value="SELL">Venda</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1">Quantidade</label>
+                                <input type="number" id="quantity" required min="1" placeholder="10" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Preço Unitário (R$)</label>
+                            <input type="number" id="price" required step="0.01" placeholder="10.50" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg text-sm transition-colors shadow">
+                            Adicionar Transação
+                        </button>
+                    </form>
+                    
+                    <button type="button" onclick="saveDataToFirebase()" class="w-full mt-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 rounded-lg text-sm transition-colors shadow flex items-center justify-center gap-2">
+                        ☁️ Salvar Dados na Nuvem
+                    </button>
+                    <p id="saveStatus" class="text-xs text-center text-slate-400 mt-2"></p>
+                </div>
+
+                <!-- Painel de Atualização Manual de Proventos do Mês -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <h2 class="text-md font-semibold text-slate-200 mb-2">✏️ Ajustar Provento do Mês</h2>
+                    <p class="text-xs text-slate-400 mb-4">Atualize manualmente o valor por cota se a API não trouxer dados para o mês selecionado.</p>
+                    <form id="manualDividendForm" class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Ativo</label>
+                            <select id="manualTicker" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm uppercase text-slate-200"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Rendimento por Cota (R$)</label>
+                            <input type="number" id="manualRate" step="0.0001" placeholder="0.80" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200">
+                        </div>
+                        <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 text-cyan-300 font-medium py-1.5 rounded-lg text-xs transition-colors">
+                            Salvar Provento no Mês Ativo
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Card de Principais Notícias dos FIIs -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-200">📰 Notícias dos Ativos</h2>
+                            <p class="text-xs text-slate-400">Últimas atualizações dos fundos da sua carteira</p>
+                        </div>
+                        <span id="newsCount" class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-2.5 py-1 rounded-full font-medium">0 notícias</span>
+                    </div>
+                    
+                    <!-- Feed Scrollável de Notícias -->
+                    <div id="newsFeed" class="space-y-3 max-h-80 overflow-y-auto pr-1">
+                        <p class="text-xs text-slate-500 text-center py-6">Adicione fundos à carteira para carregar as notícias.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna Direita: Posição e Gráficos -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Posição Consolidada -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold text-slate-200">💼 Posição Consolidada vs Mercado</h2>
+                        <button onclick="refreshData()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded text-emerald-400 transition-colors">
+                            🔄 Sincronizar com B3
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900/50 text-slate-400 text-xs uppercase border-b border-slate-800">
+                                <tr>
+                                    <th class="p-3">Ativo</th>
+                                    <th class="p-3">Qtd</th>
+                                    <th class="p-3">Preço Médio</th>
+                                    <th class="p-3">Preço Atual (B3)</th>
+                                    <th class="p-3">Variação Diária</th>
+                                    <th class="p-3">Lucro / Prejuízo</th>
+                                    <th class="p-3 text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portfolioTableBody" class="divide-y divide-slate-800">
+                                <tr>
+                                    <td colspan="7" class="p-4 text-center text-slate-500">Nenhum FII cadastrado ainda.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Gráfico 1: Proventos Totais -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-200">📈 Proventos Totais no Mês por Ativo</h2>
+                            <p class="text-xs text-slate-400">Valor total recebido (Qtd x Rendimento da cota) no mês selecionado.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="monthSelector" class="text-xs font-medium text-slate-400">Mês/Ano:</label>
+                            <select id="monthSelector" onchange="updateUI()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500">
+                            </select>
+                        </div>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="monthlyDividendsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gráfico 2: Proventos por Cota -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="mb-4">
+                        <h2 class="text-lg font-semibold text-slate-200">💵 Proventos por Cota (Unitário)</h2>
+                        <p class="text-xs text-slate-400">Quanto cada cota individual pagou no mês selecionado.</p>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="perShareDividendsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Firebase SDKs e Lógica -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBZujC2mIzXtVDUm_-G_DtRqupp92Y2FUU",
+            authDomain: "fundos-imobiliarios-3cc90.firebaseapp.com",
+            projectId: "fundos-imobiliarios-3cc90",
+            storageBucket: "fundos-imobiliarios-3cc90.firebasestorage.app",
+            messagingSenderId: "753641991879",
+            appId: "1:753641991879:web:d3f06c221e21fb3e6018e2",
+            measurementId: "G-098NTNZS00"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        window.fbDb = db;
+        window.fbDoc = doc;
+        window.fbSetDoc = setDoc;
+        window.fbGetDoc = getDoc;
+
+        window.loadDataFromFirebase();
+    </script>
+
+    <script>
+        const BRAPI_TOKEN = "1F5SvhH52HVZe4Bvj5rzAN";
+        let transactions = [];
+        let marketDataStore = {};
+        let dividendsDataStore = {};
+        let manualDividends = {};
+        let dividendsChart = null;
+        let perShareChart = null;
+
+        document.getElementById('transactionForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const ticker = document.getElementById('ticker').value.toUpperCase().trim();
+            const type = document.getElementById('type').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const price = parseFloat(document.getElementById('price').value);
+
+            if (!ticker || isNaN(quantity) || isNaN(price)) return;
+
+            transactions.push({ ticker, type, quantity, price });
+            document.getElementById('transactionForm').reset();
+            
+            await fetchBrapiData([ticker]);
+        });
+
+        document.getElementById('manualDividendForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const ticker = document.getElementById('manualTicker').value;
+            const rate = parseFloat(document.getElementById('manualRate').value);
+            const monthSelector = document.getElementById('monthSelector');
+            const selectedMonth = monthSelector ? monthSelector.value : null;
+
+            if (!ticker || isNaN(rate) || !selectedMonth) return;
+
+            if (!manualDividends[selectedMonth]) manualDividends[selectedMonth] = {};
+            manualDividends[selectedMonth][ticker] = rate;
+
+            document.getElementById('manualRate').value = '';
+            await saveDataToFirebaseSilently();
+            updateUI();
+        });
+
+        window.removeAsset = async function(ticker) {
+            if (confirm(`Tem certeza que deseja remover todas as transações do ativo ${ticker}?`)) {
+                transactions = transactions.filter(t => t.ticker !== ticker);
+                delete marketDataStore[ticker];
+                delete dividendsDataStore[ticker];
+                
+                await saveDataToFirebaseSilently();
+                populateMonthSelector();
+                updateUI();
+            }
+        };
+
+        async function saveDataToFirebaseSilently() {
+            try {
+                const docRef = window.fbDoc(window.fbDb, "portfolio", "user_carteira");
+                await window.fbSetDoc(docRef, { 
+                    transactions: transactions,
+                    manualDividends: manualDividends
+                });
+            } catch (err) {}
+        }
+
+        async function saveDataToFirebase() {
+            const statusEl = document.getElementById('saveStatus');
+            try {
+                statusEl.innerText = "Salvando na nuvem...";
+                statusEl.className = "text-xs text-center text-cyan-400 mt-2";
+
+                const docRef = window.fbDoc(window.fbDb, "portfolio", "user_carteira");
+                await window.fbSetDoc(docRef, { 
+                    transactions: transactions,
+                    manualDividends: manualDividends
+                });
+
+                statusEl.innerText = "Dados salvos com sucesso!";
+                statusEl.className = "text-xs text-center text-emerald-400 mt-2";
+                setTimeout(() => { statusEl.innerText = ""; }, 4000);
+            } catch (err) {
+                statusEl.innerText = "Erro ao salvar. Verifique a conexão.";
+                statusEl.className = "text-xs text-center text-rose-400 mt-2";
+            }
+        }
+
+        window.loadDataFromFirebase = async function() {
+            try {
+                const docRef = window.fbDoc(window.fbDb, "portfolio", "user_carteira");
+                const docSnap = await window.fbGetDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && Array.isArray(data.transactions)) {
+                        transactions = data.transactions;
+                    }
+                    if (data && data.manualDividends) {
+                        manualDividends = data.manualDividends;
+                    }
+                    const tickers = [...new Set(transactions.map(t => t.ticker))];
+                    if (tickers.length > 0) {
+                        await fetchBrapiData(tickers);
+                    }
+                }
+            } catch (err) {
+                console.warn("Aviso ao carregar dados do Firebase:", err);
+            }
+        }
+
+        function extractDateInfo(dateValue) {
+            if (!dateValue) return null;
+            const str = String(dateValue).trim();
+            
+            const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})/);
+            if (isoMatch) {
+                return { year: parseInt(isoMatch[1]), month: parseInt(isoMatch[2]) };
+            }
+
+            const brMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+            if (brMatch) {
+                return { year: parseInt(brMatch[3]), month: parseInt(brMatch[2]) };
+            }
+
+            const parsedTime = Date.parse(str);
+            if (!isNaN(parsedTime)) {
+                const dObj = new Date(parsedTime);
+                return { year: dObj.getUTCFullYear(), month: dObj.getUTCMonth() + 1 };
+            }
+            return null;
+        }
+
+        function extractDividendsArray(responseObj) {
+            if (!responseObj) return [];
+            
+            if (Array.isArray(responseObj.cashDividends)) return responseObj.cashDividends;
+            if (Array.isArray(responseObj.dividends)) return responseObj.dividends;
+
+            if (Array.isArray(responseObj.results)) {
+                for (let res of responseObj.results) {
+                    if (res.dividendsData && Array.isArray(res.dividendsData.cashDividends)) {
+                        return res.dividendsData.cashDividends;
+                    }
+                    if (Array.isArray(res.dividends)) return res.dividends;
+                    if (Array.isArray(res.cashDividends)) return res.cashDividends;
+                }
+            }
+            return [];
+        }
+
+        async function fetchBrapiData(tickersArray) {
+            if (tickersArray.length === 0) return;
+            const uniqueTickers = [...new Set(tickersArray)];
+            
+            for (let ticker of uniqueTickers) {
+                try {
+                    const resQuote = await fetch(`https://brapi.dev/api/quote/${ticker}?token=${BRAPI_TOKEN}`);
+                    if (resQuote.ok) {
+                        const dataQuote = await resQuote.json();
+                        if (dataQuote.results && dataQuote.results.length > 0) {
+                            marketDataStore[ticker] = dataQuote.results[0];
+                        }
+                    }
+                } catch (e) {}
+
+                let extracted = [];
+                try {
+                    const resDiv1 = await fetch(`https://brapi.dev/api/quote/${ticker}?dividends=true&token=${BRAPI_TOKEN}`);
+                    if (resDiv1.ok) {
+                        const dataDiv1 = await resDiv1.json();
+                        extracted = extractDividendsArray(dataDiv1);
+                    }
+                } catch(e) {}
+
+                if (extracted.length === 0) {
+                    try {
+                        const resDiv2 = await fetch(`https://brapi.dev/api/v2/stocks/dividends?symbols=${ticker}&token=${BRAPI_TOKEN}`);
+                        if (resDiv2.ok) {
+                            const dataDiv2 = await resDiv2.json();
+                            extracted = extractDividendsArray(dataDiv2);
+                        }
+                    } catch(e) {}
+                }
+
+                dividendsDataStore[ticker] = extracted;
+            }
+
+            populateMonthSelector();
+            updateUI();
+        }
+
+        async function refreshData() {
+            const portfolio = calculatePortfolio();
+            const tickers = portfolio.map(p => p.ticker);
+            if (tickers.length > 0) {
+                await fetchBrapiData(tickers);
+                alert("Dados sincronizados com sucesso com a B3!");
+            } else {
+                alert("Nenhum FII na carteira para atualizar.");
+            }
+        }
+
+        function calculatePortfolio() {
+            const positions = {};
+            transactions.forEach(tx => {
+                if (!positions[tx.ticker]) {
+                    positions[tx.ticker] = { quantity: 0, invested: 0 };
+                }
+                if (tx.type === 'BUY') {
+                    positions[tx.ticker].quantity += tx.quantity;
+                    positions[tx.ticker].invested += tx.quantity * tx.price;
+                } else if (tx.type === 'SELL') {
+                    if (positions[tx.ticker].quantity > 0) {
+                        const avg = positions[tx.ticker].invested / positions[tx.ticker].quantity;
+                        positions[tx.ticker].quantity -= tx.quantity;
+                        positions[tx.ticker].invested -= tx.quantity * avg;
+                        if (positions[tx.ticker].quantity <= 0) {
+                            positions[tx.ticker].quantity = 0;
+                            positions[tx.ticker].invested = 0;
+                        }
+                    }
+                }
+            });
+
+            return Object.keys(positions)
+                .filter(ticker => positions[ticker].quantity > 0)
+                .map(ticker => {
+                    const pos = positions[ticker];
+                    const avgPrice = pos.quantity > 0 ? pos.invested / pos.quantity : 0;
+                    return {
+                        ticker,
+                        quantity: pos.quantity,
+                        averagePrice: avgPrice,
+                        totalInvested: pos.invested
+                    };
+                });
+        }
+
+        function populateMonthSelector() {
+            const selector = document.getElementById('monthSelector');
+            const currentSelected = selector.value;
+            let allMonthsSet = new Set();
+
+            const now = new Date();
+            for (let i = 0; i < 24; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                allMonthsSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+            }
+
+            Object.values(dividendsDataStore).forEach(divs => {
+                divs.forEach(div => {
+                    const rawDate = div.paymentDate || div.approvedOn || div.lastDatePrior || div.date;
+                    const dInfo = extractDateInfo(rawDate);
+                    if (dInfo) {
+                        allMonthsSet.add(`${dInfo.year}-${String(dInfo.month).padStart(2, '0')}`);
+                    }
+                });
+            });
+
+            Object.keys(manualDividends).forEach(mStr => allMonthsSet.add(mStr));
+
+            let monthsArray = Array.from(allMonthsSet).sort().reverse();
+
+            selector.innerHTML = '';
+            monthsArray.forEach(mStr => {
+                const [year, month] = mStr.split('-');
+                const opt = document.createElement('option');
+                opt.value = mStr;
+                opt.innerText = `${month}/${year}`;
+                selector.appendChild(opt);
+            });
+
+            if (currentSelected && monthsArray.includes(currentSelected)) {
+                selector.value = currentSelected;
+            } else if (monthsArray.length > 0) {
+                selector.value = monthsArray[0];
+            }
+        }
+
+        async function fetchNewsForPortfolio(tickers) {
+            const newsContainer = document.getElementById('newsFeed');
+            const newsCountEl = document.getElementById('newsCount');
+            
+            if (!newsContainer) return;
+
+            if (!tickers || tickers.length === 0) {
+                newsContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Nenhum FII ativo para exibir notícias.</p>`;
+                if (newsCountEl) newsCountEl.innerText = "0 notícias";
+                return;
+            }
+
+            newsContainer.innerHTML = `<p class="text-xs text-cyan-400 text-center py-6 animate-pulse">⏳ Buscando notícias dos ativos...</p>`;
+            
+            try {
+                const activeTickers = tickers.slice(0, 6);
+                const fetchPromises = activeTickers.map(async (ticker) => {
+                    try {
+                        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(ticker + ' FII fundo imobiliario')}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+                        const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.items) {
+                                return data.items.slice(0, 2).map(item => ({
+                                    ticker: ticker,
+                                    title: item.title,
+                                    link: item.link,
+                                    pubDate: new Date(item.pubDate).toLocaleDateString('pt-BR')
+                                }));
+                            }
+                        }
+                    } catch (e) {}
+                    return [];
+                });
+
+                const results = await Promise.all(fetchPromises);
+                const allNews = results.flat();
+
+                if (allNews.length === 0) {
+                    newsContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Nenhuma notícia recente encontrada.</p>`;
+                    if (newsCountEl) newsCountEl.innerText = "0 notícias";
+                    return;
+                }
+
+                if (newsCountEl) newsCountEl.innerText = `${allNews.length} notícias`;
+
+                newsContainer.innerHTML = allNews.map(news => `
+                    <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800 hover:border-slate-700 transition-all">
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <span class="text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded uppercase">${news.ticker}</span>
+                            <span class="text-[10px] text-slate-500">${news.pubDate}</span>
+                        </div>
+                        <a href="${news.link}" target="_blank" rel="noopener noreferrer" class="text-xs text-slate-200 hover:text-emerald-400 font-medium leading-snug block transition-colors">
+                            ${news.title}
+                        </a>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                newsContainer.innerHTML = `<p class="text-xs text-rose-400 text-center py-6">Erro ao carregar feed de notícias.</p>`;
+            }
+        }
+
+        function updateUI() {
+            const portfolio = calculatePortfolio();
+            const tbody = document.getElementById('portfolioTableBody');
+            
+            const totalInvestedEl = document.getElementById('totalInvestedEl');
+            const totalMarketEl = document.getElementById('totalMarketEl');
+            const totalDividendsEl = document.getElementById('totalDividendsEl');
+            const monthSelector = document.getElementById('monthSelector');
+            const manualTickerSel = document.getElementById('manualTicker');
+
+            let selectedYearMonth = monthSelector ? monthSelector.value : null;
+
+            if (manualTickerSel) {
+                manualTickerSel.innerHTML = portfolio.map(p => `<option value="${p.ticker}">${p.ticker}</option>`).join('');
+            }
+
+            let chartLabels = [];
+            let chartTotalValues = [];
+            let chartPerShareValues = [];
+            let monthTotalDividends = 0;
+
+            if (portfolio.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum FII ativo na carteira.</td></tr>`;
+                totalInvestedEl.innerText = "R$ 0,00";
+                totalMarketEl.innerText = "R$ 0,00";
+                totalDividendsEl.innerText = "R$ 0,00";
+            } else {
+                tbody.innerHTML = '';
+                
+                let totalInvAll = 0;
+                let totalMktAll = 0;
+
+                portfolio.forEach(item => {
+                    totalInvAll += item.totalInvested;
+                    
+                    const assetData = marketDataStore[item.ticker] || {};
+                    const innerData = assetData.data || assetData;
+                    
+                    let currentPrice = innerData.regularMarketPrice ?? innerData.marketPrice ?? innerData.close ?? innerData.price;
+                    if (currentPrice === undefined || currentPrice === null || isNaN(currentPrice)) {
+                        currentPrice = item.averagePrice;
+                    }
+
+                    // Captura a variação percentual diária da API
+                    const dailyChange = innerData.regularMarketChangePercent ?? 0;
+                    const changeIsPositive = dailyChange >= 0;
+                    const changeColor = changeIsPositive ? 'text-emerald-400' : 'text-rose-400';
+                    const changeSign = changeIsPositive && dailyChange > 0 ? '+' : '';
+
+                    const marketValue = item.quantity * currentPrice;
+                    totalMktAll += marketValue;
+
+                    const profitLoss = marketValue - item.totalInvested;
+                    const profitLossPercent = item.totalInvested > 0 ? (profitLoss / item.totalInvested) * 100 : 0;
+                    const isPositive = profitLoss >= 0;
+
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-800/50">
+                            <td class="p-3 font-bold text-emerald-400">${item.ticker}</td>
+                            <td class="p-3">${item.quantity}</td>
+                            <td class="p-3">R$ ${item.averagePrice.toFixed(2)}</td>
+                            <td class="p-3 text-emerald-300 font-semibold">R$ ${currentPrice.toFixed(2)}</td>
+                            <td class="p-3 font-medium ${changeColor}">${changeSign}${dailyChange.toFixed(2)}%</td>
+                            <td class="p-3 font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}">
+                                ${isPositive ? '+' : ''}R$ ${profitLoss.toFixed(2)} (${isPositive ? '+' : ''}${profitLossPercent.toFixed(1)}%)
+                            </td>
+                            <td class="p-3 text-center">
+                                <button onclick="removeAsset('${item.ticker}')" title="Eliminar Ativo" class="bg-rose-900/40 hover:bg-rose-600 text-rose-300 hover:text-white px-2.5 py-1 rounded transition-colors text-xs font-semibold">
+                                    🗑️ Excluir
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+
+                    let unitRate = 0;
+                    
+                    if (selectedYearMonth && manualDividends[selectedYearMonth] && manualDividends[selectedYearMonth][item.ticker] !== undefined) {
+                        unitRate = Number(manualDividends[selectedYearMonth][item.ticker]);
+                    } else if (selectedYearMonth) {
+                        const [selYear, selMonth] = selectedYearMonth.split('-');
+                        const rawDividends = dividendsDataStore[item.ticker] || [];
+                        
+                        rawDividends.forEach(div => {
+                            const rawDateVal = div.paymentDate || div.approvedOn || div.lastDatePrior || div.date;
+                            const dInfo = extractDateInfo(rawDateVal);
+                            
+                            if (dInfo && dInfo.year === parseInt(selYear) && dInfo.month === parseInt(selMonth)) {
+                                unitRate += Number(div.rate ?? div.amount ?? div.value ?? div.cashDividend ?? 0);
+                            }
+                        });
+                    }
+
+                    const totalReceivedForAsset = unitRate * item.quantity;
+                    monthTotalDividends += totalReceivedForAsset;
+
+                    chartLabels.push(item.ticker);
+                    chartTotalValues.push(totalReceivedForAsset);
+                    chartPerShareValues.push(unitRate);
+                });
+
+                totalInvestedEl.innerText = `R$ ${totalInvAll.toFixed(2)}`;
+                totalMarketEl.innerText = `R$ ${totalMktAll.toFixed(2)}`;
+                totalDividendsEl.innerText = `R$ ${monthTotalDividends.toFixed(2)}`;
+            }
+
+            renderCharts(chartLabels, chartTotalValues, chartPerShareValues);
+            
+            const activeTickers = portfolio.map(p => p.ticker);
+            fetchNewsForPortfolio(activeTickers);
+        }
+
+        function renderCharts(labels, totalValues, perShareValues) {
+            const lightColors = [
+                'rgba(56, 189, 248, 0.9)', 'rgba(74, 222, 128, 0.9)', 'rgba(250, 204, 21, 0.9)', 
+                'rgba(244, 114, 182, 0.9)', 'rgba(192, 132, 252, 0.9)', 'rgba(45, 212, 191, 0.9)'
+            ];
+            const borderColors = [
+                'rgba(56, 189, 248, 1)', 'rgba(74, 222, 128, 1)', 'rgba(250, 204, 21, 1)',
+                'rgba(244, 114, 182, 1)', 'rgba(192, 132, 252, 1)', 'rgba(45, 212, 191, 1)'
+            ];
+
+            const bgColors = labels.map((_, i) => lightColors[i % lightColors.length]);
+            const bdrColors = labels.map((_, i) => borderColors[i % borderColors.length]);
+
+            const ctx1 = document.getElementById('monthlyDividendsChart').getContext('2d');
+            if (dividendsChart) dividendsChart.destroy();
+
+            dividendsChart = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Recebido (R$)',
+                        data: totalValues,
+                        backgroundColor: bgColors,
+                        borderColor: bdrColors,
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        maxBarThickness: 50
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)}` } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#ffffff', font: { weight: 'bold', size: 12 } } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
+                    }
+                }
+            });
+
+            const ctx2 = document.getElementById('perShareDividendsChart').getContext('2d');
+            if (perShareChart) perShareChart.destroy();
+
+            perShareChart = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Provento por Cota (R$)',
+                        data: perShareValues,
+                        backgroundColor: bgColors,
+                        borderColor: bdrColors,
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        maxBarThickness: 50
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)} por cota` } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#ffffff', font: { weight: 'bold', size: 12 } } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
