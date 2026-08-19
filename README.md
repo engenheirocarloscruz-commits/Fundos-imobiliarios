@@ -117,7 +117,6 @@
                         <span id="newsCount" class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-2.5 py-1 rounded-full font-medium">0 notícias</span>
                     </div>
                     
-                    <!-- Feed Scrollável de Notícias -->
                     <div id="newsFeed" class="space-y-3 max-h-80 overflow-y-auto pr-1">
                         <p class="text-xs text-slate-500 text-center py-6">Adicione fundos à carteira para carregar as notícias.</p>
                     </div>
@@ -156,12 +155,12 @@
                     </div>
                 </div>
 
-                <!-- Gráfico 1: Proventos Totais -->
+                <!-- Gráfico 1: Proventos Totais do Mês -->
                 <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
                         <div>
                             <h2 class="text-lg font-semibold text-slate-200">📈 Proventos Totais no Mês por Ativo</h2>
-                            <p class="text-xs text-slate-400">Valor total recebido (Qtd x Rendimento da cota) no mês selecionado.</p>
+                            <p class="text-xs text-slate-400">Valor total recebido no mês selecionado.</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <label for="monthSelector" class="text-xs font-medium text-slate-400">Mês/Ano:</label>
@@ -182,6 +181,25 @@
                     </div>
                     <div class="relative h-64 w-full">
                         <canvas id="perShareDividendsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gráfico 3: Histórico de Proventos Mês a Mês com Filtro por Ano -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-200">🗓️ Evolução dos Proventos (Mês a Mês)</h2>
+                            <p class="text-xs text-slate-400">Total de proventos acumulados por mês ao longo dos anos.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="yearSelector" class="text-xs font-medium text-slate-400">Filtrar Ano:</label>
+                            <select id="yearSelector" onchange="updateUI()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500">
+                                <option value="ALL">Todos os Anos</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="historicalDividendsChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -225,6 +243,7 @@
         let manualDividends = {};
         let dividendsChart = null;
         let perShareChart = null;
+        let historicalChart = null;
 
         document.getElementById('transactionForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -265,7 +284,7 @@
                 delete dividendsDataStore[ticker];
                 
                 await saveDataToFirebaseSilently();
-                populateMonthSelector();
+                populateSelectors();
                 updateUI();
             }
         };
@@ -401,7 +420,7 @@
                 dividendsDataStore[ticker] = extracted;
             }
 
-            populateMonthSelector();
+            populateSelectors();
             updateUI();
         }
 
@@ -452,11 +471,8 @@
                 });
         }
 
-        function populateMonthSelector() {
-            const selector = document.getElementById('monthSelector');
-            const currentSelected = selector.value;
+        function getAllMonthsSet() {
             let allMonthsSet = new Set();
-
             const now = new Date();
             for (let i = 0; i < 24; i++) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -474,22 +490,57 @@
             });
 
             Object.keys(manualDividends).forEach(mStr => allMonthsSet.add(mStr));
+            return allMonthsSet;
+        }
+
+        function populateSelectors() {
+            const monthSelector = document.getElementById('monthSelector');
+            const yearSelector = document.getElementById('yearSelector');
+            const allMonthsSet = getAllMonthsSet();
 
             let monthsArray = Array.from(allMonthsSet).sort().reverse();
 
-            selector.innerHTML = '';
-            monthsArray.forEach(mStr => {
-                const [year, month] = mStr.split('-');
-                const opt = document.createElement('option');
-                opt.value = mStr;
-                opt.innerText = `${month}/${year}`;
-                selector.appendChild(opt);
-            });
+            // Popula Mês/Ano
+            const currentSelectedMonth = monthSelector ? monthSelector.value : null;
+            if (monthSelector) {
+                monthSelector.innerHTML = '';
+                monthsArray.forEach(mStr => {
+                    const [year, month] = mStr.split('-');
+                    const opt = document.createElement('option');
+                    opt.value = mStr;
+                    opt.innerText = `${month}/${year}`;
+                    monthSelector.appendChild(opt);
+                });
 
-            if (currentSelected && monthsArray.includes(currentSelected)) {
-                selector.value = currentSelected;
-            } else if (monthsArray.length > 0) {
-                selector.value = monthsArray[0];
+                if (currentSelectedMonth && monthsArray.includes(currentSelectedMonth)) {
+                    monthSelector.value = currentSelectedMonth;
+                } else if (monthsArray.length > 0) {
+                    monthSelector.value = monthsArray[0];
+                }
+            }
+
+            // Popula Anos
+            if (yearSelector) {
+                const currentSelectedYear = yearSelector.value || "ALL";
+                const yearsSet = new Set();
+                allMonthsSet.forEach(mStr => {
+                    const [year] = mStr.split('-');
+                    yearsSet.add(year);
+                });
+
+                const yearsArray = Array.from(yearsSet).sort().reverse();
+
+                yearSelector.innerHTML = '<option value="ALL">Todos os Anos</option>';
+                yearsArray.forEach(year => {
+                    const opt = document.createElement('option');
+                    opt.value = year;
+                    opt.innerText = year;
+                    yearSelector.appendChild(opt);
+                });
+
+                if (currentSelectedYear && (currentSelectedYear === "ALL" || yearsArray.includes(currentSelectedYear))) {
+                    yearSelector.value = currentSelectedYear;
+                }
             }
         }
 
@@ -564,9 +615,11 @@
             const totalMarketEl = document.getElementById('totalMarketEl');
             const totalDividendsEl = document.getElementById('totalDividendsEl');
             const monthSelector = document.getElementById('monthSelector');
+            const yearSelector = document.getElementById('yearSelector');
             const manualTickerSel = document.getElementById('manualTicker');
 
             let selectedYearMonth = monthSelector ? monthSelector.value : null;
+            let selectedYear = yearSelector ? yearSelector.value : 'ALL';
 
             if (manualTickerSel) {
                 manualTickerSel.innerHTML = portfolio.map(p => `<option value="${p.ticker}">${p.ticker}</option>`).join('');
@@ -599,7 +652,6 @@
                         currentPrice = item.averagePrice;
                     }
 
-                    // Captura a variação percentual diária da API
                     const dailyChange = innerData.regularMarketChangePercent ?? 0;
                     const changeIsPositive = dailyChange >= 0;
                     const changeColor = changeIsPositive ? 'text-emerald-400' : 'text-rose-400';
@@ -631,7 +683,6 @@
                     `;
 
                     let unitRate = 0;
-                    
                     if (selectedYearMonth && manualDividends[selectedYearMonth] && manualDividends[selectedYearMonth][item.ticker] !== undefined) {
                         unitRate = Number(manualDividends[selectedYearMonth][item.ticker]);
                     } else if (selectedYearMonth) {
@@ -661,13 +712,48 @@
                 totalDividendsEl.innerText = `R$ ${monthTotalDividends.toFixed(2)}`;
             }
 
-            renderCharts(chartLabels, chartTotalValues, chartPerShareValues);
+            // Cálculo do histórico de proventos mês a mês com filtro de ano
+            const allMonthsSorted = Array.from(getAllMonthsSet()).sort();
+            let historyLabels = [];
+            let historyValues = [];
+
+            allMonthsSorted.forEach(mStr => {
+                const [selYear, selMonth] = mStr.split('-');
+
+                // Aplica o filtro por ano se diferente de 'ALL'
+                if (selectedYear !== 'ALL' && selYear !== selectedYear) {
+                    return;
+                }
+
+                let monthSum = 0;
+                portfolio.forEach(item => {
+                    let rate = 0;
+                    if (manualDividends[mStr] && manualDividends[mStr][item.ticker] !== undefined) {
+                        rate = Number(manualDividends[mStr][item.ticker]);
+                    } else {
+                        const rawDividends = dividendsDataStore[item.ticker] || [];
+                        rawDividends.forEach(div => {
+                            const rawDateVal = div.paymentDate || div.approvedOn || div.lastDatePrior || div.date;
+                            const dInfo = extractDateInfo(rawDateVal);
+                            if (dInfo && dInfo.year === parseInt(selYear) && dInfo.month === parseInt(selMonth)) {
+                                rate += Number(div.rate ?? div.amount ?? div.value ?? div.cashDividend ?? 0);
+                            }
+                        });
+                    }
+                    monthSum += rate * item.quantity;
+                });
+
+                historyLabels.push(`${selMonth}/${selYear.slice(2)}`);
+                historyValues.push(monthSum);
+            });
+
+            renderCharts(chartLabels, chartTotalValues, chartPerShareValues, historyLabels, historyValues);
             
             const activeTickers = portfolio.map(p => p.ticker);
             fetchNewsForPortfolio(activeTickers);
         }
 
-        function renderCharts(labels, totalValues, perShareValues) {
+        function renderCharts(labels, totalValues, perShareValues, historyLabels, historyValues) {
             const lightColors = [
                 'rgba(56, 189, 248, 0.9)', 'rgba(74, 222, 128, 0.9)', 'rgba(250, 204, 21, 0.9)', 
                 'rgba(244, 114, 182, 0.9)', 'rgba(192, 132, 252, 0.9)', 'rgba(45, 212, 191, 0.9)'
@@ -680,6 +766,7 @@
             const bgColors = labels.map((_, i) => lightColors[i % lightColors.length]);
             const bdrColors = labels.map((_, i) => borderColors[i % borderColors.length]);
 
+            // Gráfico 1: Proventos Totais
             const ctx1 = document.getElementById('monthlyDividendsChart').getContext('2d');
             if (dividendsChart) dividendsChart.destroy();
 
@@ -708,6 +795,7 @@
                 }
             });
 
+            // Gráfico 2: Proventos por Cota
             const ctx2 = document.getElementById('perShareDividendsChart').getContext('2d');
             if (perShareChart) perShareChart.destroy();
 
@@ -731,6 +819,64 @@
                     plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)} por cota` } } },
                     scales: {
                         x: { grid: { display: false }, ticks: { color: '#ffffff', font: { weight: 'bold', size: 12 } } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
+                    }
+                }
+            });
+
+            // Gráfico 3: Histórico de Proventos Mês a Mês (com rótulos nas barras)
+            const ctx3 = document.getElementById('historicalDividendsChart').getContext('2d');
+            if (historicalChart) historicalChart.destroy();
+
+            historicalChart = new Chart(ctx3, {
+                type: 'bar',
+                data: {
+                    labels: historyLabels,
+                    datasets: [{
+                        label: 'Total no Mês (R$)',
+                        data: historyValues,
+                        backgroundColor: 'rgba(34, 211, 238, 0.75)',
+                        borderColor: 'rgba(34, 211, 238, 1)',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        maxBarThickness: 40
+                    }]
+                },
+                plugins: [{
+                    id: 'barLabelsPlugin',
+                    afterDatasetsDraw(chart) {
+                        const { ctx } = chart;
+                        chart.data.datasets.forEach((dataset, datasetIndex) => {
+                            const meta = chart.getDatasetMeta(datasetIndex);
+                            meta.data.forEach((bar, index) => {
+                                const value = dataset.data[index];
+                                if (value > 0) {
+                                    ctx.save();
+                                    ctx.fillStyle = '#38bdf8';
+                                    ctx.font = 'bold 10px sans-serif';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'bottom';
+                                    ctx.fillText(`R$ ${value.toFixed(2)}`, bar.x, bar.y - 4);
+                                    ctx.restore();
+                                }
+                            });
+                        });
+                    }
+                }],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            top: 20
+                        }
+                    },
+                    plugins: { 
+                        legend: { display: false }, 
+                        tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)}` } } 
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
                         y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
                     }
                 }
