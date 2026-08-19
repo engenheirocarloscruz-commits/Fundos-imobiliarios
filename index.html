@@ -142,13 +142,14 @@
                                     <th class="p-3">Qtd</th>
                                     <th class="p-3">Preço Médio</th>
                                     <th class="p-3">Preço Atual (B3)</th>
+                                    <th class="p-3">Variação Diária</th>
                                     <th class="p-3">Lucro / Prejuízo</th>
                                     <th class="p-3 text-center">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="portfolioTableBody" class="divide-y divide-slate-800">
                                 <tr>
-                                    <td colspan="6" class="p-4 text-center text-slate-500">Nenhum FII cadastrado ainda.</td>
+                                    <td colspan="7" class="p-4 text-center text-slate-500">Nenhum FII cadastrado ainda.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -221,7 +222,7 @@
         let transactions = [];
         let marketDataStore = {};
         let dividendsDataStore = {};
-        let manualDividends = {}; // Estrutura: { "YYYY-MM": { "KNIP11": 0.80 } }
+        let manualDividends = {};
         let dividendsChart = null;
         let perShareChart = null;
 
@@ -323,18 +324,15 @@
             }
         }
 
-        // Extrator universal de Ano/Mês via Regex
         function extractDateInfo(dateValue) {
             if (!dateValue) return null;
             const str = String(dateValue).trim();
             
-            // Tenta formato ISO YYYY-MM-DD
             const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})/);
             if (isoMatch) {
                 return { year: parseInt(isoMatch[1]), month: parseInt(isoMatch[2]) };
             }
 
-            // Tenta formato BR DD/MM/YYYY
             const brMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
             if (brMatch) {
                 return { year: parseInt(brMatch[3]), month: parseInt(brMatch[2]) };
@@ -495,7 +493,6 @@
             }
         }
 
-        // Função para buscar notícias em tempo real dos FIIs cadastrados
         async function fetchNewsForPortfolio(tickers) {
             const newsContainer = document.getElementById('newsFeed');
             const newsCountEl = document.getElementById('newsCount');
@@ -571,7 +568,6 @@
 
             let selectedYearMonth = monthSelector ? monthSelector.value : null;
 
-            // Atualiza select de ajuste manual
             if (manualTickerSel) {
                 manualTickerSel.innerHTML = portfolio.map(p => `<option value="${p.ticker}">${p.ticker}</option>`).join('');
             }
@@ -582,7 +578,7 @@
             let monthTotalDividends = 0;
 
             if (portfolio.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Nenhum FII ativo na carteira.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum FII ativo na carteira.</td></tr>`;
                 totalInvestedEl.innerText = "R$ 0,00";
                 totalMarketEl.innerText = "R$ 0,00";
                 totalDividendsEl.innerText = "R$ 0,00";
@@ -603,6 +599,12 @@
                         currentPrice = item.averagePrice;
                     }
 
+                    // Captura a variação percentual diária da API
+                    const dailyChange = innerData.regularMarketChangePercent ?? 0;
+                    const changeIsPositive = dailyChange >= 0;
+                    const changeColor = changeIsPositive ? 'text-emerald-400' : 'text-rose-400';
+                    const changeSign = changeIsPositive && dailyChange > 0 ? '+' : '';
+
                     const marketValue = item.quantity * currentPrice;
                     totalMktAll += marketValue;
 
@@ -616,6 +618,7 @@
                             <td class="p-3">${item.quantity}</td>
                             <td class="p-3">R$ ${item.averagePrice.toFixed(2)}</td>
                             <td class="p-3 text-emerald-300 font-semibold">R$ ${currentPrice.toFixed(2)}</td>
+                            <td class="p-3 font-medium ${changeColor}">${changeSign}${dailyChange.toFixed(2)}%</td>
                             <td class="p-3 font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}">
                                 ${isPositive ? '+' : ''}R$ ${profitLoss.toFixed(2)} (${isPositive ? '+' : ''}${profitLossPercent.toFixed(1)}%)
                             </td>
@@ -629,11 +632,9 @@
 
                     let unitRate = 0;
                     
-                    // 1. Verifica se existe ajuste manual para esse mês/ticker
                     if (selectedYearMonth && manualDividends[selectedYearMonth] && manualDividends[selectedYearMonth][item.ticker] !== undefined) {
                         unitRate = Number(manualDividends[selectedYearMonth][item.ticker]);
                     } else if (selectedYearMonth) {
-                        // 2. Tenta puxar dos dados da API
                         const [selYear, selMonth] = selectedYearMonth.split('-');
                         const rawDividends = dividendsDataStore[item.ticker] || [];
                         
@@ -662,7 +663,6 @@
 
             renderCharts(chartLabels, chartTotalValues, chartPerShareValues);
             
-            // Busca e atualiza as notícias dos ativos da carteira
             const activeTickers = portfolio.map(p => p.ticker);
             fetchNewsForPortfolio(activeTickers);
         }
