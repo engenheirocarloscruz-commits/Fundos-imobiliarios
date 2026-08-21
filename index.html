@@ -1,881 +1,917 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ControlApt - Gestão de Troca de Equipamentos</title>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Chart.js DataLabels Plugin -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  
-  <!-- jsPDF e jsPDF AutoTable CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-</head>
-<body class="bg-slate-900 text-slate-100 font-sans antialiased min-h-screen p-6">
-
-  <div class="max-w-7xl mx-auto space-y-6">
-    
-    <!-- Header -->
-    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-800/80 p-5 rounded-2xl border border-slate-700/50 backdrop-blur">
-      <div>
-        <h1 class="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-          <i data-lucide="laptop" class="text-blue-400"></i> Gestão de Troca de Equipamentos
-        </h1>
-        <p class="text-sm text-slate-400">Acompanhamento do ciclo de vida dos ativos corporativos</p>
-      </div>
-
-      <!-- Status da Nuvem e Botões de Ação -->
-      <div class="flex flex-wrap items-center gap-3">
-        <!-- Indicador de Status da Nuvem -->
-        <div id="statusNuvem" class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600 text-slate-300">
-          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="statusPonto"></span>
-          <span id="statusTexto">Aguardando Firebase...</span>
-        </div>
-
-        <!-- Botão Exportar Relatório Analítico em PDF -->
-        <button onclick="exportarRelatorioAnaliticoPDF()" title="Exportar métricas técnicas para PDF" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-sm px-4 py-2.5 rounded-lg transition flex items-center gap-2 border border-slate-600 active:scale-95">
-          <i data-lucide="file-text" class="w-4 h-4 text-rose-400"></i>
-          <span>Relatório PDF</span>
-        </button>
-
-        <!-- Botão Salvar na Nuvem -->
-        <button onclick="salvarNaNuvem()" id="btnSalvar" class="bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm px-4 py-2.5 rounded-lg transition flex items-center gap-2 shadow-lg shadow-blue-900/20 active:scale-95">
-          <i data-lucide="cloud-upload" class="w-4 h-4"></i>
-          <span>Salvar na Nuvem</span>
-        </button>
-
-        <!-- Botão Novo Equipamento (Protegido por Senha) -->
-        <button onclick="solicitarSenhaCadastro()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm px-4 py-2.5 rounded-lg transition flex items-center gap-2 shadow-lg shadow-emerald-900/20">
-          <i data-lucide="plus-circle" class="w-4 h-4"></i> Novo Ativo
-        </button>
-      </div>
-    </header>
-
-    <!-- KPIs Topo (2 Cards Operacionais) -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50">
-        <div class="flex justify-between items-start text-slate-400 mb-2">
-          <span class="text-xs font-semibold uppercase tracking-wider">Ativos em Dia</span>
-          <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-400"></i>
-        </div>
-        <div class="text-2xl font-bold text-white"><span id="kpiEquipamentosEmDia">0</span> <span class="text-sm font-normal text-slate-400">itens</span></div>
-        <p class="text-xs text-emerald-400 mt-2 flex items-center gap-1">
-          <i data-lucide="shield-check" class="w-3 h-3"></i> Dentro do prazo previsto para troca
-        </p>
-      </div>
-
-      <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50">
-        <div class="flex justify-between items-start text-slate-400 mb-2">
-          <span class="text-xs font-semibold uppercase tracking-wider">Ativos Vencidos</span>
-          <i data-lucide="clock" class="w-5 h-5 text-rose-400"></i>
-        </div>
-        <div class="text-2xl font-bold text-white"><span id="kpiTrocasPendentes">0</span> <span class="text-sm font-normal text-slate-400">itens</span></div>
-        <p class="text-xs text-rose-400 mt-2 flex items-center gap-1">
-          <i data-lucide="alert-circle" class="w-3 h-3"></i> Prazo de troca ultrapassado (Atrasados)
-        </p>
-      </div>
-    </section>
-
-    <!-- Seção de Gráficos e Alertas (Lado a Lado) -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
-      <!-- Gráfico de Barras (Previsão de Substituições) - Ocupa 2 colunas no desktop -->
-      <div class="lg:col-span-2 bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50 flex flex-col justify-between">
-        <h2 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
-          <i data-lucide="bar-chart-3" class="w-4 h-4 text-blue-400"></i> Previsão de Substituições (Próximos 12 Meses)
-        </h2>
-        <div class="h-64 relative">
-          <canvas id="forecastChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Gráfico de Pizza (Status Operacional %) -->
-      <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50 flex flex-col justify-between">
-        <h2 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
-          <i data-lucide="pie-chart" class="w-4 h-4 text-emerald-400"></i> Status dos Ativos (%)
-        </h2>
-        <div class="h-64 relative flex items-center justify-center">
-          <canvas id="pieChart"></canvas>
-        </div>
-      </div>
-
-    </section>
-
-    <!-- Seção: Descrição e Detalhes dos Equipamentos Vencidos -->
-    <section class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-semibold text-white flex items-center gap-2">
-          <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400"></i> Ativos Vencidos - Detalhes de Atraso
-        </h2>
-        <span id="contadorVencidosBadge" class="text-xs bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2.5 py-1 rounded-full font-medium">0 pendências</span>
-      </div>
-      <div id="listaEquipamentosVencidos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        <!-- Preenchido via JavaScript dinamicamente -->
-      </div>
-    </section>
-
-    <!-- Tabela Operacional -->
-    <section class="bg-slate-800/60 rounded-2xl border border-slate-700/50 overflow-hidden">
-      <div class="p-5 border-b border-slate-700/50 flex justify-between items-center">
-        <h2 class="text-base font-semibold text-white flex items-center gap-2">
-          <i data-lucide="list-todo" class="w-4 h-4 text-emerald-400"></i> Fila Operacional de Trocas
-        </h2>
-        <span id="totalRegistros" class="text-xs bg-slate-700 px-2.5 py-1 rounded-full text-slate-300">Exibindo 0 registros</span>
-      </div>
-
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left text-slate-300">
-          <thead class="text-xs uppercase bg-slate-900/50 text-slate-400 border-b border-slate-700/50">
-            <tr>
-              <th class="px-6 py-3">ID Ativo</th>
-              <th class="px-6 py-3">Tipo</th>
-              <th class="px-6 py-3">Descrição / Ativo</th>
-              <th class="px-6 py-3">Usuário</th>
-              <th class="px-6 py-3">Última Troca</th>
-              <th class="px-6 py-3">Periodicidade</th>
-              <th class="px-6 py-3">Próxima Troca</th>
-              <th class="px-6 py-3">Status</th>
-              <th class="px-6 py-3 text-center">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tabelaCorpo" class="divide-y divide-slate-700/30">
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-
-  <!-- MODAL DE CADASTRO / EDIÇÃO -->
-  <div id="modalEquipamento" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl">
-      <div class="p-5 border-b border-slate-700 flex justify-between items-center">
-        <h3 id="modalTitulo" class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="laptop" class="text-blue-400"></i> Cadastrar Ativo
-        </h3>
-        <button onclick="fecharModal()" class="text-slate-400 hover:text-white transition">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <form id="formEquipamento" onsubmit="salvarFormulario(event)" class="p-6 space-y-4">
-        <input type="hidden" id="inputIndex" value="-1">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">ID do Ativo</label>
-            <input type="text" id="inputID" required placeholder="Ex: PAT-2026-001" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Tipo de Ativo</label>
-            <select id="inputTipo" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-              <option value="Equipamento">Equipamento</option>
-              <option value="Componente">Componente</option>
-            </select>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Nome do Equipamento / Componente</label>
-            <input type="text" id="inputNome" required placeholder="Ex: Dell Vostro 5510 ou SSD 1TB Kingston" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-          </div>
-          
-          <div class="md:col-span-2">
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Usuário Responsável</label>
-            <input type="text" id="inputUsuario" required placeholder="Ex: João Silva" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-          </div>
-
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Última Data de Troca</label>
-            <input type="date" id="inputUltimaTroca" onchange="calcularProximaTroca()" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Periodicidade (Meses)</label>
-            <input type="number" id="inputPeriodicidade" min="1" value="36" oninput="calcularProximaTroca()" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Próxima Data Prevista (Auto)</label>
-            <input type="date" id="inputDataPrevista" readonly class="w-full bg-slate-950 border border-slate-800 text-blue-400 font-semibold rounded-lg p-2.5 text-sm cursor-not-allowed">
-          </div>
-        </div>
-
-        <div class="flex justify-end gap-3 pt-4 border-t border-slate-700">
-          <button type="button" onclick="fecharModal()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium rounded-lg transition">Cancelar</button>
-          <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition flex items-center gap-2">
-            <i data-lucide="check" class="w-4 h-4"></i>
-            <span>Confirmar</span>
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL DE SENHA -->
-  <div id="modalSenha" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
-      <div class="p-5 border-b border-slate-700 flex justify-between items-center">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="lock" class="text-amber-400 w-4 h-4"></i> Autenticação Necessária
-        </h3>
-        <button onclick="fecharModalSenha()" class="text-slate-400 hover:text-white transition">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-      <div class="p-5 space-y-4">
-        <div>
-          <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Digite a senha de cadastro</label>
-          <input type="password" id="inputSenhaMaster" placeholder="Insira a senha" onkeydown="if(event.key === 'Enter') verificarSenha();" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 text-sm focus:border-blue-500 focus:outline-none">
-        </div>
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" onclick="fecharModalSenha()" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded-lg transition">Cancelar</button>
-          <button type="button" onclick="verificarSenha()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition">Liberar</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    lucide.createIcons();
-
-    Chart.register(ChartDataLabels);
-
-    let meuGraficoBarras = null;
-    let meuGraficoPizza = null;
-    let acaoAposSenha = null;
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyDvm-FqoigGt_VS_ARApMFgKCRM8RHR1eI",
-      authDomain: "troca-de-equipamentos.firebaseapp.com",
-      projectId: "troca-de-equipamentos",
-      storageBucket: "troca-de-equipamentos.firebasestorage.app",
-      messagingSenderId: "349303833644",
-      appId: "1:349303833644:web:e600c8400501058734fd89",
-      measurementId: "G-RG0CGN6MTB"
-    };
-
-    let db = null;
-    let firebaseAtivo = false;
-
-    try {
-      firebase.initializeApp(firebaseConfig);
-      db = firebase.firestore();
-      firebaseAtivo = true;
-      atualizarStatusNuvem('conectado', 'Nuvem Conectada');
-    } catch (e) {
-      console.warn("Erro ao conectar com Firebase:", e);
-      atualizarStatusNuvem('erro', 'Erro de Conexão');
-    }
-
-    function atualizarStatusNuvem(estado, texto) {
-      const ponto = document.getElementById('statusPonto');
-      const txt = document.getElementById('statusTexto');
-      txt.innerText = texto;
-
-      ponto.className = "w-2 h-2 rounded-full ";
-      if (estado === 'conectado') {
-        ponto.className += "bg-emerald-400 shadow-sm shadow-emerald-400";
-      } else if (estado === 'salvando') {
-        ponto.className += "bg-blue-400 animate-ping";
-      } else if (estado === 'pendente') {
-        ponto.className += "bg-amber-400 animate-pulse";
-      } else {
-        ponto.className += "bg-rose-500";
-      }
-    }
-
-    let equipamentos = [
-      { id: "PAT-2024-089", tipo: "Equipamento", nome: "Dell Latitude 3420", usuario: "Mariana Costa", ultimaTroca: "2023-09-15", periodicidade: 36, proximaTroca: "2026-09-15", status: "Agendado" },
-      { id: "PAT-2024-112", tipo: "Equipamento", nome: 'MacBook Pro 14"', usuario: "Carlos Eduardo", ultimaTroca: "2024-09-22", periodicidade: 24, proximaTroca: "2026-10-22", status: "Agendado" }
-    ];
-
-    const dadosLocais = localStorage.getItem('controlapt_equipamentos');
-    if (dadosLocais) {
-      try { equipamentos = JSON.parse(dadosLocais); } catch(e){}
-    }
-
-    if (firebaseAtivo) {
-      carregarDaNuvem();
-    } else {
-      renderizarTabela();
-    }
-
-    async function carregarDaNuvem() {
-      if (!firebaseAtivo) return;
-      atualizarStatusNuvem('salvando', 'Carregando dados...');
-      
-      try {
-        const snapshot = await db.collection("equipamentos").get();
-        if (!snapshot.empty) {
-          const dadosNuvem = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            dadosNuvem.push({
-              id: data.id || "",
-              tipo: data.tipo || "Equipamento",
-              nome: data.nome || "",
-              usuario: data.usuario || "",
-              ultimaTroca: data.ultimaTroca || "",
-              periodicidade: Number(data.periodicidade) || 36,
-              proximaTroca: data.proximaTroca || "",
-              status: data.status || "Agendado"
-            });
-          });
-          equipamentos = dadosNuvem;
-          localStorage.setItem('controlapt_equipamentos', JSON.stringify(equipamentos));
-          atualizarStatusNuvem('conectado', 'Nuvem Conectada');
-        } else {
-          salvarNaNuvem();
-        }
-      } catch (err) {
-        console.error("Erro ao carregar do Firebase:", err);
-        atualizarStatusNuvem('erro', 'Erro ao Carregar');
-      }
-      renderizarTabela();
-    }
-
-    async function salvarNaNuvem() {
-      const btn = document.getElementById('btnSalvar');
-      btn.disabled = true;
-      btn.classList.add('opacity-80');
-      atualizarStatusNuvem('salvando', 'Salvando na Nuvem...');
-
-      localStorage.setItem('controlapt_equipamentos', JSON.stringify(equipamentos));
-
-      if (firebaseAtivo) {
-        try {
-          const batch = db.batch();
-          const snapshot = await db.collection("equipamentos").get();
-          
-          snapshot.forEach(doc => {
-            batch.delete(doc.ref);
-          });
-
-          equipamentos.forEach(item => {
-            const newRef = db.collection("equipamentos").doc();
-            batch.set(newRef, {
-              id: item.id || "",
-              tipo: item.tipo || "Equipamento",
-              nome: item.nome || "",
-              usuario: item.usuario || "",
-              ultimaTroca: item.ultimaTroca || "",
-              periodicidade: Number(item.periodicidade) || 36,
-              proximaTroca: item.proximaTroca || "",
-              status: item.status || "Agendado"
-            });
-          });
-
-          await batch.commit();
-          atualizarStatusNuvem('conectado', 'Dados Salvos na Nuvem!');
-          mostrarToast("Sucesso! Dados salvos no Firebase.");
-        } catch (err) {
-          console.error("Erro ao salvar no Firebase:", err);
-          atualizarStatusNuvem('erro', 'Erro de Permissão/Conexão');
-          mostrarToast(`Erro ao salvar: ${err.message}`, true);
-        }
-      } else {
-        setTimeout(() => {
-          atualizarStatusNuvem('offline', 'Modo Local');
-          mostrarToast("Salvo localmente no navegador.");
-        }, 500);
-      }
-
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.classList.remove('opacity-80');
-      }, 600);
-    }
-
-    function exportarRelatorioAnaliticoPDF() {
-      if (!equipamentos || equipamentos.length === 0) {
-        mostrarToast("Nenhum dado disponível para exportação.", true);
-        return;
-      }
-
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      const dataFormatada = hoje.toLocaleDateString('pt-BR');
-
-      doc.setFontSize(16);
-      doc.setTextColor(30, 41, 59);
-      doc.text("Relatório Analítico de Gestão de Ativos", 14, 18);
-
-      doc.setFontSize(10);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Gerado em: ${dataFormatada} | Sistema ControlApt`, 14, 25);
-
-      const colunas = [
-        ["ID Ativo", "Tipo", "Descrição", "Usuário", "Última Troca", "Periodicidade", "Próxima Troca", "Dias Restantes", "Vida Útil", "Risco"]
-      ];
-
-      const linhas = equipamentos.map(item => {
-        const dUltima = item.ultimaTroca ? new Date(item.ultimaTroca + 'T00:00:00') : hoje;
-        const dProxima = item.proximaTroca ? new Date(item.proximaTroca + 'T00:00:00') : hoje;
-        const totalDiasCiclo = Math.max(1, (dProxima - dUltima) / (1000 * 60 * 60 * 24));
-        const diasDecorridos = (hoje - dUltima) / (1000 * 60 * 60 * 24);
-        const diasRestantes = Math.round((dProxima - hoje) / (1000 * 60 * 60 * 24));
-        
-        let pctConsumo = Math.min(100, Math.max(0, (diasDecorridos / totalDiasCiclo) * 100)).toFixed(1);
-        let risco = "BAIXO";
-        if (diasRestantes < 0) risco = "CRÍTICO";
-        else if (diasRestantes <= 30) risco = "ALTO";
-        else if (diasRestantes <= 90) risco = "MÉDIO";
-
-        return [
-          item.id || "-",
-          item.tipo || "Equipamento",
-          item.nome || "-",
-          item.usuario || "-",
-          formatarDataBR(item.ultimaTroca),
-          `${item.periodicidade}m`,
-          formatarDataBR(item.proximaTroca),
-          `${diasRestantes}d`,
-          `${pctConsumo}%`,
-          risco
-        ];
-      });
-
-      doc.autoTable({
-        head: colunas,
-        body: linhas,
-        startY: 30,
-        theme: 'grid',
-        headStyles: { 
-          fillColor: [30, 41, 59], 
-          textColor: [255, 255, 255], 
-          fontStyle: 'bold',
-          halign: 'center' 
-        },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        styles: { fontSize: 8.5, cellPadding: 3, verticalAlign: 'middle' },
-        didParseCell: function (data) {
-          if (data.section === 'body' && data.column.index === 9) {
-            const val = data.cell.raw;
-            if (val === 'CRÍTICO') {
-              data.cell.styles.textColor = [225, 29, 72];
-              data.cell.styles.fontStyle = 'bold';
-            } else if (val === 'ALTO') {
-              data.cell.styles.textColor = [217, 119, 6];
-              data.cell.styles.fontStyle = 'bold';
-            } else if (val === 'MÉDIO') {
-              data.cell.styles.textColor = [202, 138, 4];
-            } else {
-              data.cell.styles.textColor = [22, 163, 74];
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FII Control - Cotação Real & Proventos B3</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f172a',
+                        cardBg: '#1e293b',
+                    }
+                }
             }
-          }
         }
-      });
+    </script>
+</head>
+<body class="bg-darkBg text-slate-100 min-h-screen font-sans p-4 md:p-8">
 
-      doc.save(`relatorio_analitico_${hoje.toISOString().split('T')[0]}.pdf`);
-      mostrarToast("Relatório PDF gerado com sucesso!");
-    }
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Cabeçalho -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-emerald-400">📊 FII Control - Cotação Real & Proventos</h1>
+                <p class="text-sm text-slate-400">Sincronizado via Brapi com dados oficiais B3 & Firebase</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <div class="bg-cardBg px-4 py-2 rounded-lg border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Patrimônio Investido</span>
+                    <span id="totalInvestedEl" class="text-base font-bold text-slate-200">R$ 0,00</span>
+                </div>
+                <div class="bg-cardBg px-4 py-2 rounded-lg border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Patrimônio de Mercado</span>
+                    <span id="totalMarketEl" class="text-base font-bold text-emerald-400">R$ 0,00</span>
+                </div>
+                <div class="bg-cardBg px-4 py-2 rounded-lg border border-slate-700">
+                    <span class="text-xs text-slate-400 block">Proventos (Mês Selecionado)</span>
+                    <span id="totalDividendsEl" class="text-base font-bold text-cyan-400">R$ 0,00</span>
+                </div>
+            </div>
+        </header>
 
-    function mostrarToast(mensagem, eErro = false) {
-      const toast = document.createElement('div');
-      toast.className = `fixed bottom-5 right-5 z-50 text-white text-sm px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 border transition-all duration-300 ${eErro ? 'bg-rose-900 border-rose-700' : 'bg-slate-800 border-emerald-500/50'}`;
-      toast.innerHTML = `<i data-lucide="${eErro ? 'alert-circle' : 'check-circle'}" class="${eErro ? 'text-rose-400' : 'text-emerald-400'} w-5 h-5"></i> <span>${mensagem}</span>`;
-      document.body.appendChild(toast);
-      lucide.createIcons();
+        <!-- Grade Principal -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Coluna Esquerda: Form de Transações, Ajuste Manual & Notícias -->
+            <div class="space-y-6">
+                <!-- Form de Transação -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <h2 class="text-lg font-semibold mb-4 text-slate-200">➕ Adicionar Transação</h2>
+                    <form id="transactionForm" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Ticker do FII</label>
+                            <input type="text" id="ticker" required placeholder="Ex: MXRF11, KNIP11" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1">Tipo</label>
+                                <select id="type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                                    <option value="BUY">Compra</option>
+                                    <option value="SELL">Venda</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1">Data da Transação</label>
+                                <input type="date" id="date" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-slate-200">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1">Quantidade</label>
+                                <input type="number" id="quantity" required min="1" placeholder="10" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1">Preço Unitário (R$)</label>
+                                <input type="number" id="price" required step="0.01" placeholder="10.50" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg text-sm transition-colors shadow">
+                            Adicionar Transação
+                        </button>
+                    </form>
+                    
+                    <button type="button" onclick="saveDataToFirebase()" class="w-full mt-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 rounded-lg text-sm transition-colors shadow flex items-center justify-center gap-2">
+                        ☁️ Salvar Dados na Nuvem
+                    </button>
+                    <p id="saveStatus" class="text-xs text-center text-slate-400 mt-2"></p>
+                </div>
 
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-      }, 4000);
-    }
+                <!-- Painel de Atualização Manual de Proventos do Mês -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <h2 class="text-md font-semibold text-slate-200 mb-2">✏️ Ajustar Provento do Mês</h2>
+                    <p class="text-xs text-slate-400 mb-4">Atualize manualmente o valor por cota se a API não trouxer dados para o mês selecionado.</p>
+                    <form id="manualDividendForm" class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Ativo</label>
+                            <select id="manualTicker" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm uppercase text-slate-200"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Rendimento por Cota (R$)</label>
+                            <input type="number" id="manualRate" step="0.0001" placeholder="0.80" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200">
+                        </div>
+                        <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 text-cyan-300 font-medium py-1.5 rounded-lg text-xs transition-colors">
+                            Salvar Provento no Mês Ativo
+                        </button>
+                    </form>
+                </div>
 
-    function atualizarGraficos(emDia, vencidos) {
-      const ctxBarras = document.getElementById('forecastChart');
-      if (ctxBarras) {
-        const hoje = new Date();
-        const anoAtual = hoje.getFullYear();
-        const mesAtual = hoje.getMonth();
+                <!-- Card de Principais Notícias dos FIIs -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-200">📰 Notícias dos Ativos</h2>
+                            <p class="text-xs text-slate-400">Últimas atualizações dos fundos da sua carteira</p>
+                        </div>
+                        <span id="newsCount" class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-2.5 py-1 rounded-full font-medium">0 notícias</span>
+                    </div>
+                    
+                    <div id="newsFeed" class="space-y-3 max-h-80 overflow-y-auto pr-1">
+                        <p class="text-xs text-slate-500 text-center py-6">Adicione fundos à carteira para carregar as notícias.</p>
+                    </div>
+                </div>
+            </div>
 
-        const mesesNomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        const labelsGrafico = [];
-        const dadosGrafico = Array(12).fill(0);
-        const nomesPorMes = Array(12).fill(null).map(() => []);
+            <!-- Coluna Direita: Posição e Gráficos -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Posição Consolidada -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold text-slate-200">💼 Posição Consolidada vs Mercado</h2>
+                        <button onclick="refreshData()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded text-emerald-400 transition-colors">
+                            🔄 Sincronizar com B3
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900/50 text-slate-400 text-xs uppercase border-b border-slate-800">
+                                <tr>
+                                    <th class="p-3">Ativo</th>
+                                    <th class="p-3">Qtd</th>
+                                    <th class="p-3">Preço Médio</th>
+                                    <th class="p-3">Preço Atual (B3)</th>
+                                    <th class="p-3">Variação Diária</th>
+                                    <th class="p-3">Lucro / Prejuízo</th>
+                                    <th class="p-3 text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portfolioTableBody" class="divide-y divide-slate-800">
+                                <tr>
+                                    <td colspan="7" class="p-4 text-center text-slate-500">Nenhum FII cadastrado ainda.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-        for (let i = 0; i < 12; i++) {
-          let mesIndex = (mesAtual + i) % 12;
-          let anoOffset = Math.floor((mesAtual + i) / 12);
-          let anoStr = String(anoAtual + anoOffset).slice(-2);
-          labelsGrafico.push(`${mesesNomes[mesIndex]}/${anoStr}`);
-        }
+                <!-- Gráfico 1: Proventos Totais do Mês -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-200">📈 Proventos Totais no Mês por Ativo</h2>
+                            <p class="text-xs text-slate-400">Valor total recebido no mês selecionado com base nas cotas possuídas na época.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="monthSelector" class="text-xs font-medium text-slate-400">Mês/Ano:</label>
+                            <select id="monthSelector" onchange="updateUI()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500">
+                            </select>
+                        </div>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="monthlyDividendsChart"></canvas>
+                    </div>
+                </div>
 
-        equipamentos.forEach(item => {
-          if (!item.proximaTroca) return;
-          const partes = item.proximaTroca.split('-');
-          if (partes.length !== 3) return;
-          
-          const anoTroca = parseInt(partes[0]);
-          const mesTroca = parseInt(partes[1]) - 1;
-          const diferencaMeses = (anoTroca - anoAtual) * 12 + (mesTroca - mesAtual);
+                <!-- Gráfico 2: Proventos por Cota -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="mb-4">
+                        <h2 class="text-lg font-semibold text-slate-200">💵 Proventos por Cota (Unitário)</h2>
+                        <p class="text-xs text-slate-400">Quanto cada cota individual pagou no mês selecionado.</p>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="perShareDividendsChart"></canvas>
+                    </div>
+                </div>
 
-          if (diferencaMeses >= 0 && diferencaMeses < 12) {
-            dadosGrafico[diferencaMeses]++;
-            nomesPorMes[diferencaMeses].push(item.nome);
-          }
+                <!-- Gráfico 3: Histórico de Proventos Mês a Mês com Filtro por Ano -->
+                <div class="bg-cardBg p-6 rounded-xl border border-slate-800 shadow-lg">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-200">🗓️ Evolução dos Proventos (Mês a Mês)</h2>
+                            <p class="text-xs text-slate-400">Total de proventos acumulados por mês considerando o histórico de compras.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="yearSelector" class="text-xs font-medium text-slate-400">Filtrar Ano:</label>
+                            <select id="yearSelector" onchange="updateUI()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500">
+                                <option value="ALL">Todos os Anos</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="historicalDividendsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Firebase SDKs e Lógica -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBZujC2mIzXtVDUm_-G_DtRqupp92Y2FUU",
+            authDomain: "fundos-imobiliarios-3cc90.firebaseapp.com",
+            projectId: "fundos-imobiliarios-3cc90",
+            storageBucket: "fundos-imobiliarios-3cc90.firebasestorage.app",
+            messagingSenderId: "753641991879",
+            appId: "1:753641991879:web:d3f06c221e21fb3e6018e2",
+            measurementId: "G-098NTNZS00"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        window.fbDb = db;
+        window.fbDoc = doc;
+        window.fbSetDoc = setDoc;
+        window.fbGetDoc = getDoc;
+
+        window.loadDataFromFirebase();
+    </script>
+
+    <script>
+        const BRAPI_TOKEN = "1F5SvhH52HVZe4Bvj5rzAN";
+        let transactions = [];
+        let marketDataStore = {};
+        let dividendsDataStore = {};
+        let manualDividends = {};
+        let dividendsChart = null;
+        let perShareChart = null;
+        let historicalChart = null;
+
+        // Define a data atual como padrão no campo de data
+        document.getElementById('date').value = new Date().toISOString().split('T')[0];
+
+        document.getElementById('transactionForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const ticker = document.getElementById('ticker').value.toUpperCase().trim();
+            const type = document.getElementById('type').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const price = parseFloat(document.getElementById('price').value);
+            const date = document.getElementById('date').value;
+
+            if (!ticker || isNaN(quantity) || isNaN(price) || !date) return;
+
+            transactions.push({ ticker, type, quantity, price, date });
+            
+            // Limpa form preservando a data atual
+            document.getElementById('ticker').value = '';
+            document.getElementById('quantity').value = '';
+            document.getElementById('price').value = '';
+            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+
+            await saveDataToFirebaseSilently();
+            await fetchBrapiData([ticker]);
         });
 
-        if (meuGraficoBarras) {
-          meuGraficoBarras.data.labels = labelsGrafico;
-          meuGraficoBarras.data.datasets[0].data = dadosGrafico;
-          meuGraficoBarras.data.datasets[0].nomesEquipamentos = nomesPorMes;
-          meuGraficoBarras.update();
-        } else {
-          meuGraficoBarras = new Chart(ctxBarras.getContext('2d'), {
-            type: 'bar',
-            data: {
-              labels: labelsGrafico,
-              datasets: [{ 
-                label: 'Trocas Planejadas', 
-                data: dadosGrafico, 
-                nomesEquipamentos: nomesPorMes,
-                backgroundColor: '#3b82f6', 
-                borderRadius: 6 
-              }]
-            },
-            options: { 
-              responsive: true, 
-              maintainAspectRatio: false,
-              plugins: { 
-                legend: { display: false },
-                datalabels: { display: false },
-                tooltip: {
-                  callbacks: {
-                    title: function(context) {
-                      return `Mês: ${context[0].label}`;
-                    },
-                    label: function(context) {
-                      const index = context.dataIndex;
-                      const qtd = context.raw;
-                      const nomes = context.dataset.nomesEquipamentos ? context.dataset.nomesEquipamentos[index] : [];
-                      
-                      if (qtd === 0) {
-                        return 'Nenhum ativo previsto';
-                      }
-                      
-                      return [
-                        `Total: ${qtd} item(ns)`,
-                        `Itens: ${nomes.join(', ')}`
-                      ];
+        document.getElementById('manualDividendForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const ticker = document.getElementById('manualTicker').value;
+            const rate = parseFloat(document.getElementById('manualRate').value);
+            const monthSelector = document.getElementById('monthSelector');
+            const selectedMonth = monthSelector ? monthSelector.value : null;
+
+            if (!ticker || isNaN(rate) || !selectedMonth) return;
+
+            if (!manualDividends[selectedMonth]) manualDividends[selectedMonth] = {};
+            manualDividends[selectedMonth][ticker] = rate;
+
+            document.getElementById('manualRate').value = '';
+            await saveDataToFirebaseSilently();
+            updateUI();
+        });
+
+        window.removeAsset = async function(ticker) {
+            if (confirm(`Tem certeza que deseja remover todas as transações do ativo ${ticker}?`)) {
+                transactions = transactions.filter(t => t.ticker !== ticker);
+                delete marketDataStore[ticker];
+                delete dividendsDataStore[ticker];
+                
+                await saveDataToFirebaseSilently();
+                populateSelectors();
+                updateUI();
+            }
+        };
+
+        async function saveDataToFirebaseSilently() {
+            try {
+                const docRef = window.fbDoc(window.fbDb, "portfolio", "user_carteira");
+                await window.fbSetDoc(docRef, { 
+                    transactions: transactions,
+                    manualDividends: manualDividends
+                });
+            } catch (err) {}
+        }
+
+        async function saveDataToFirebase() {
+            const statusEl = document.getElementById('saveStatus');
+            try {
+                statusEl.innerText = "Salvando na nuvem...";
+                statusEl.className = "text-xs text-center text-cyan-400 mt-2";
+
+                const docRef = window.fbDoc(window.fbDb, "portfolio", "user_carteira");
+                await window.fbSetDoc(docRef, { 
+                    transactions: transactions,
+                    manualDividends: manualDividends
+                });
+
+                statusEl.innerText = "Dados salvos com sucesso!";
+                statusEl.className = "text-xs text-center text-emerald-400 mt-2";
+                setTimeout(() => { statusEl.innerText = ""; }, 4000);
+            } catch (err) {
+                statusEl.innerText = "Erro ao salvar. Verifique a conexão.";
+                statusEl.className = "text-xs text-center text-rose-400 mt-2";
+            }
+        }
+
+        window.loadDataFromFirebase = async function() {
+            try {
+                const docRef = window.fbDoc(window.fbDb, "portfolio", "user_carteira");
+                const docSnap = await window.fbGetDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && Array.isArray(data.transactions)) {
+                        transactions = data.transactions;
                     }
-                  }
+                    if (data && data.manualDividends) {
+                        manualDividends = data.manualDividends;
+                    }
+                    const tickers = [...new Set(transactions.map(t => t.ticker))];
+                    if (tickers.length > 0) {
+                        await fetchBrapiData(tickers);
+                    }
                 }
-              }, 
-              scales: { 
-                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }, 
-                y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', stepSize: 1 } } 
-              } 
+            } catch (err) {
+                console.warn("Aviso ao carregar dados do Firebase:", err);
             }
-          });
         }
-      }
 
-      const ctxPizza = document.getElementById('pieChart');
-      if (ctxPizza) {
-        if (meuGraficoPizza) {
-          meuGraficoPizza.data.datasets[0].data = [emDia, vencidos];
-          meuGraficoPizza.update();
-        } else {
-          meuGraficoPizza = new Chart(ctxPizza.getContext('2d'), {
-            type: 'pie',
-            data: {
-              labels: ['Em Dia', 'Vencidos'],
-              datasets: [{
-                data: [emDia, vencidos],
-                backgroundColor: ['#10b981', '#f43f5e'],
-                borderWidth: 2,
-                borderColor: '#1e293b'
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: {
-                  position: 'bottom',
-                  labels: { color: '#cbd5e1', font: { size: 12 } }
+        function extractDateInfo(dateValue) {
+            if (!dateValue) return null;
+            const str = String(dateValue).trim();
+            
+            const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})/);
+            if (isoMatch) {
+                return { year: parseInt(isoMatch[1]), month: parseInt(isoMatch[2]) };
+            }
+
+            const brMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+            if (brMatch) {
+                return { year: parseInt(brMatch[3]), month: parseInt(brMatch[2]) };
+            }
+
+            const parsedTime = Date.parse(str);
+            if (!isNaN(parsedTime)) {
+                const dObj = new Date(parsedTime);
+                return { year: dObj.getUTCFullYear(), month: dObj.getUTCMonth() + 1 };
+            }
+            return null;
+        }
+
+        function extractDividendsArray(responseObj) {
+            if (!responseObj) return [];
+            
+            if (Array.isArray(responseObj.cashDividends)) return responseObj.cashDividends;
+            if (Array.isArray(responseObj.dividends)) return responseObj.dividends;
+
+            if (Array.isArray(responseObj.results)) {
+                for (let res of responseObj.results) {
+                    if (res.dividendsData && Array.isArray(res.dividendsData.cashDividends)) {
+                        return res.dividendsData.cashDividends;
+                    }
+                    if (Array.isArray(res.dividends)) return res.dividends;
+                    if (Array.isArray(res.cashDividends)) return res.cashDividends;
+                }
+            }
+            return [];
+        }
+
+        async function fetchBrapiData(tickersArray) {
+            if (tickersArray.length === 0) return;
+            const uniqueTickers = [...new Set(tickersArray)];
+            
+            for (let ticker of uniqueTickers) {
+                try {
+                    const resQuote = await fetch(`https://brapi.dev/api/quote/${ticker}?token=${BRAPI_TOKEN}`);
+                    if (resQuote.ok) {
+                        const dataQuote = await resQuote.json();
+                        if (dataQuote.results && dataQuote.results.length > 0) {
+                            marketDataStore[ticker] = dataQuote.results[0];
+                        }
+                    }
+                } catch (e) {}
+
+                let extracted = [];
+                try {
+                    const resDiv1 = await fetch(`https://brapi.dev/api/quote/${ticker}?dividends=true&token=${BRAPI_TOKEN}`);
+                    if (resDiv1.ok) {
+                        const dataDiv1 = await resDiv1.json();
+                        extracted = extractDividendsArray(dataDiv1);
+                    }
+                } catch(e) {}
+
+                if (extracted.length === 0) {
+                    try {
+                        const resDiv2 = await fetch(`https://brapi.dev/api/v2/stocks/dividends?symbols=${ticker}&token=${BRAPI_TOKEN}`);
+                        if (resDiv2.ok) {
+                            const dataDiv2 = await resDiv2.json();
+                            extracted = extractDividendsArray(dataDiv2);
+                        }
+                    } catch(e) {}
+                }
+
+                dividendsDataStore[ticker] = extracted;
+            }
+
+            populateSelectors();
+            updateUI();
+        }
+
+        async function refreshData() {
+            const portfolio = calculatePortfolio();
+            const tickers = portfolio.map(p => p.ticker);
+            if (tickers.length > 0) {
+                await fetchBrapiData(tickers);
+                alert("Dados sincronizados com sucesso com a B3!");
+            } else {
+                alert("Nenhum FII na carteira para atualizar.");
+            }
+        }
+
+        // Calcula o portfólio. Se upToYearMonth ("YYYY-MM") for fornecido, considera apenas transações efetuadas até aquele mês inclusive.
+        function calculatePortfolio(upToYearMonth = null) {
+            const positions = {};
+            transactions.forEach(tx => {
+                if (upToYearMonth && tx.date) {
+                    const txYearMonth = tx.date.substring(0, 7);
+                    if (txYearMonth > upToYearMonth) return;
+                }
+
+                if (!positions[tx.ticker]) {
+                    positions[tx.ticker] = { quantity: 0, invested: 0 };
+                }
+                if (tx.type === 'BUY') {
+                    positions[tx.ticker].quantity += tx.quantity;
+                    positions[tx.ticker].invested += tx.quantity * tx.price;
+                } else if (tx.type === 'SELL') {
+                    if (positions[tx.ticker].quantity > 0) {
+                        const avg = positions[tx.ticker].invested / positions[tx.ticker].quantity;
+                        positions[tx.ticker].quantity -= tx.quantity;
+                        positions[tx.ticker].invested -= tx.quantity * avg;
+                        if (positions[tx.ticker].quantity <= 0) {
+                            positions[tx.ticker].quantity = 0;
+                            positions[tx.ticker].invested = 0;
+                        }
+                    }
+                }
+            });
+
+            return Object.keys(positions)
+                .filter(ticker => positions[ticker].quantity > 0)
+                .map(ticker => {
+                    const pos = positions[ticker];
+                    const avgPrice = pos.quantity > 0 ? pos.invested / pos.quantity : 0;
+                    return {
+                        ticker,
+                        quantity: pos.quantity,
+                        averagePrice: avgPrice,
+                        totalInvested: pos.invested
+                    };
+                });
+        }
+
+        function getAllMonthsSet() {
+            let allMonthsSet = new Set();
+            const now = new Date();
+            for (let i = 0; i < 24; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                allMonthsSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+            }
+
+            Object.values(dividendsDataStore).forEach(divs => {
+                divs.forEach(div => {
+                    const rawDate = div.paymentDate || div.approvedOn || div.lastDatePrior || div.date;
+                    const dInfo = extractDateInfo(rawDate);
+                    if (dInfo) {
+                        allMonthsSet.add(`${dInfo.year}-${String(dInfo.month).padStart(2, '0')}`);
+                    }
+                });
+            });
+
+            Object.keys(manualDividends).forEach(mStr => allMonthsSet.add(mStr));
+            return allMonthsSet;
+        }
+
+        function populateSelectors() {
+            const monthSelector = document.getElementById('monthSelector');
+            const yearSelector = document.getElementById('yearSelector');
+            const allMonthsSet = getAllMonthsSet();
+
+            let monthsArray = Array.from(allMonthsSet).sort().reverse();
+
+            // Popula Mês/Ano
+            const currentSelectedMonth = monthSelector ? monthSelector.value : null;
+            if (monthSelector) {
+                monthSelector.innerHTML = '';
+                monthsArray.forEach(mStr => {
+                    const [year, month] = mStr.split('-');
+                    const opt = document.createElement('option');
+                    opt.value = mStr;
+                    opt.innerText = `${month}/${year}`;
+                    monthSelector.appendChild(opt);
+                });
+
+                if (currentSelectedMonth && monthsArray.includes(currentSelectedMonth)) {
+                    monthSelector.value = currentSelectedMonth;
+                } else if (monthsArray.length > 0) {
+                    monthSelector.value = monthsArray[0];
+                }
+            }
+
+            // Popula Anos
+            if (yearSelector) {
+                const currentSelectedYear = yearSelector.value || "ALL";
+                const yearsSet = new Set();
+                allMonthsSet.forEach(mStr => {
+                    const [year] = mStr.split('-');
+                    yearsSet.add(year);
+                });
+
+                const yearsArray = Array.from(yearsSet).sort().reverse();
+
+                yearSelector.innerHTML = '<option value="ALL">Todos os Anos</option>';
+                yearsArray.forEach(year => {
+                    const opt = document.createElement('option');
+                    opt.value = year;
+                    opt.innerText = year;
+                    yearSelector.appendChild(opt);
+                });
+
+                if (currentSelectedYear && (currentSelectedYear === "ALL" || yearsArray.includes(currentSelectedYear))) {
+                    yearSelector.value = currentSelectedYear;
+                }
+            }
+        }
+
+        async function fetchNewsForPortfolio(tickers) {
+            const newsContainer = document.getElementById('newsFeed');
+            const newsCountEl = document.getElementById('newsCount');
+            
+            if (!newsContainer) return;
+
+            if (!tickers || tickers.length === 0) {
+                newsContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Nenhum FII ativo para exibir notícias.</p>`;
+                if (newsCountEl) newsCountEl.innerText = "0 notícias";
+                return;
+            }
+
+            newsContainer.innerHTML = `<p class="text-xs text-cyan-400 text-center py-6 animate-pulse">⏳ Buscando notícias dos ativos...</p>`;
+            
+            try {
+                const activeTickers = tickers.slice(0, 6);
+                const fetchPromises = activeTickers.map(async (ticker) => {
+                    try {
+                        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(ticker + ' FII fundo imobiliario')}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+                        const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.items) {
+                                return data.items.slice(0, 2).map(item => ({
+                                    ticker: ticker,
+                                    title: item.title,
+                                    link: item.link,
+                                    pubDate: new Date(item.pubDate).toLocaleDateString('pt-BR')
+                                }));
+                            }
+                        }
+                    } catch (e) {}
+                    return [];
+                });
+
+                const results = await Promise.all(fetchPromises);
+                const allNews = results.flat();
+
+                if (allNews.length === 0) {
+                    newsContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Nenhuma notícia recente encontrada.</p>`;
+                    if (newsCountEl) newsCountEl.innerText = "0 notícias";
+                    return;
+                }
+
+                if (newsCountEl) newsCountEl.innerText = `${allNews.length} notícias`;
+
+                newsContainer.innerHTML = allNews.map(news => `
+                    <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800 hover:border-slate-700 transition-all">
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <span class="text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded uppercase">${news.ticker}</span>
+                            <span class="text-[10px] text-slate-500">${news.pubDate}</span>
+                        </div>
+                        <a href="${news.link}" target="_blank" rel="noopener noreferrer" class="text-xs text-slate-200 hover:text-emerald-400 font-medium leading-snug block transition-colors">
+                            ${news.title}
+                        </a>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                newsContainer.innerHTML = `<p class="text-xs text-rose-400 text-center py-6">Erro ao carregar feed de notícias.</p>`;
+            }
+        }
+
+        function updateUI() {
+            const portfolio = calculatePortfolio(); // Posição atual completa
+            const tbody = document.getElementById('portfolioTableBody');
+            
+            const totalInvestedEl = document.getElementById('totalInvestedEl');
+            const totalMarketEl = document.getElementById('totalMarketEl');
+            const totalDividendsEl = document.getElementById('totalDividendsEl');
+            const monthSelector = document.getElementById('monthSelector');
+            const yearSelector = document.getElementById('yearSelector');
+            const manualTickerSel = document.getElementById('manualTicker');
+
+            let selectedYearMonth = monthSelector ? monthSelector.value : null;
+            let selectedYear = yearSelector ? yearSelector.value : 'ALL';
+
+            if (manualTickerSel) {
+                manualTickerSel.innerHTML = portfolio.map(p => `<option value="${p.ticker}">${p.ticker}</option>`).join('');
+            }
+
+            // Posição no mês selecionado para cálculo exato de proventos do mês
+            const portfolioAtSelectedMonth = calculatePortfolio(selectedYearMonth);
+            const qtyMapAtSelectedMonth = {};
+            portfolioAtSelectedMonth.forEach(p => qtyMapAtSelectedMonth[p.ticker] = p.quantity);
+
+            let chartLabels = [];
+            let chartTotalValues = [];
+            let chartPerShareValues = [];
+            let monthTotalDividends = 0;
+
+            if (portfolio.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum FII ativo na carteira.</td></tr>`;
+                totalInvestedEl.innerText = "R$ 0,00";
+                totalMarketEl.innerText = "R$ 0,00";
+                totalDividendsEl.innerText = "R$ 0,00";
+            } else {
+                tbody.innerHTML = '';
+                
+                let totalInvAll = 0;
+                let totalMktAll = 0;
+
+                portfolio.forEach(item => {
+                    totalInvAll += item.totalInvested;
+                    
+                    const assetData = marketDataStore[item.ticker] || {};
+                    const innerData = assetData.data || assetData;
+                    
+                    let currentPrice = innerData.regularMarketPrice ?? innerData.marketPrice ?? innerData.close ?? innerData.price;
+                    if (currentPrice === undefined || currentPrice === null || isNaN(currentPrice)) {
+                        currentPrice = item.averagePrice;
+                    }
+
+                    const dailyChange = innerData.regularMarketChangePercent ?? 0;
+                    const changeIsPositive = dailyChange >= 0;
+                    const changeColor = changeIsPositive ? 'text-emerald-400' : 'text-rose-400';
+                    const changeSign = changeIsPositive && dailyChange > 0 ? '+' : '';
+
+                    const marketValue = item.quantity * currentPrice;
+                    totalMktAll += marketValue;
+
+                    const profitLoss = marketValue - item.totalInvested;
+                    const profitLossPercent = item.totalInvested > 0 ? (profitLoss / item.totalInvested) * 100 : 0;
+                    const isPositive = profitLoss >= 0;
+
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-800/50">
+                            <td class="p-3 font-bold text-emerald-400">${item.ticker}</td>
+                            <td class="p-3">${item.quantity}</td>
+                            <td class="p-3">R$ ${item.averagePrice.toFixed(2)}</td>
+                            <td class="p-3 text-emerald-300 font-semibold">R$ ${currentPrice.toFixed(2)}</td>
+                            <td class="p-3 font-medium ${changeColor}">${changeSign}${dailyChange.toFixed(2)}%</td>
+                            <td class="p-3 font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}">
+                                ${isPositive ? '+' : ''}R$ ${profitLoss.toFixed(2)} (${isPositive ? '+' : ''}${profitLossPercent.toFixed(1)}%)
+                            </td>
+                            <td class="p-3 text-center">
+                                <button onclick="removeAsset('${item.ticker}')" title="Eliminar Ativo" class="bg-rose-900/40 hover:bg-rose-600 text-rose-300 hover:text-white px-2.5 py-1 rounded transition-colors text-xs font-semibold">
+                                    🗑️ Excluir
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+
+                    let unitRate = 0;
+                    if (selectedYearMonth && manualDividends[selectedYearMonth] && manualDividends[selectedYearMonth][item.ticker] !== undefined) {
+                        unitRate = Number(manualDividends[selectedYearMonth][item.ticker]);
+                    } else if (selectedYearMonth) {
+                        const [selYear, selMonth] = selectedYearMonth.split('-');
+                        const rawDividends = dividendsDataStore[item.ticker] || [];
+                        
+                        rawDividends.forEach(div => {
+                            const rawDateVal = div.paymentDate || div.approvedOn || div.lastDatePrior || div.date;
+                            const dInfo = extractDateInfo(rawDateVal);
+                            
+                            if (dInfo && dInfo.year === parseInt(selYear) && dInfo.month === parseInt(selMonth)) {
+                                unitRate += Number(div.rate ?? div.amount ?? div.value ?? div.cashDividend ?? 0);
+                            }
+                        });
+                    }
+
+                    // Multiplica a taxa apenas pelas cotas possuídas no mês selecionado
+                    const qtyInSelectedMonth = qtyMapAtSelectedMonth[item.ticker] || 0;
+                    const totalReceivedForAsset = unitRate * qtyInSelectedMonth;
+                    monthTotalDividends += totalReceivedForAsset;
+
+                    chartLabels.push(item.ticker);
+                    chartTotalValues.push(totalReceivedForAsset);
+                    chartPerShareValues.push(unitRate);
+                });
+
+                totalInvestedEl.innerText = `R$ ${totalInvAll.toFixed(2)}`;
+                totalMarketEl.innerText = `R$ ${totalMktAll.toFixed(2)}`;
+                totalDividendsEl.innerText = `R$ ${monthTotalDividends.toFixed(2)}`;
+            }
+
+            // Cálculo do histórico de proventos mês a mês considerando as cotas que possuía em cada mês
+            const allMonthsSorted = Array.from(getAllMonthsSet()).sort();
+            let historyLabels = [];
+            let historyValues = [];
+
+            allMonthsSorted.forEach(mStr => {
+                const [selYear, selMonth] = mStr.split('-');
+
+                if (selectedYear !== 'ALL' && selYear !== selectedYear) {
+                    return;
+                }
+
+                let monthSum = 0;
+                const portfolioAtMStr = calculatePortfolio(mStr);
+
+                portfolioAtMStr.forEach(item => {
+                    let rate = 0;
+                    if (manualDividends[mStr] && manualDividends[mStr][item.ticker] !== undefined) {
+                        rate = Number(manualDividends[mStr][item.ticker]);
+                    } else {
+                        const rawDividends = dividendsDataStore[item.ticker] || [];
+                        rawDividends.forEach(div => {
+                            const rawDateVal = div.paymentDate || div.approvedOn || div.lastDatePrior || div.date;
+                            const dInfo = extractDateInfo(rawDateVal);
+                            if (dInfo && dInfo.year === parseInt(selYear) && dInfo.month === parseInt(selMonth)) {
+                                rate += Number(div.rate ?? div.amount ?? div.value ?? div.cashDividend ?? 0);
+                            }
+                        });
+                    }
+                    monthSum += rate * item.quantity;
+                });
+
+                historyLabels.push(`${selMonth}/${selYear.slice(2)}`);
+                historyValues.push(monthSum);
+            });
+
+            renderCharts(chartLabels, chartTotalValues, chartPerShareValues, historyLabels, historyValues);
+            
+            const activeTickers = portfolio.map(p => p.ticker);
+            fetchNewsForPortfolio(activeTickers);
+        }
+
+        function renderCharts(labels, totalValues, perShareValues, historyLabels, historyValues) {
+            const lightColors = [
+                'rgba(56, 189, 248, 0.9)', 'rgba(74, 222, 128, 0.9)', 'rgba(250, 204, 21, 0.9)', 
+                'rgba(244, 114, 182, 0.9)', 'rgba(192, 132, 252, 0.9)', 'rgba(45, 212, 191, 0.9)'
+            ];
+            const borderColors = [
+                'rgba(56, 189, 248, 1)', 'rgba(74, 222, 128, 1)', 'rgba(250, 204, 21, 1)',
+                'rgba(244, 114, 182, 1)', 'rgba(192, 132, 252, 1)', 'rgba(45, 212, 191, 1)'
+            ];
+
+            const bgColors = labels.map((_, i) => lightColors[i % lightColors.length]);
+            const bdrColors = labels.map((_, i) => borderColors[i % borderColors.length]);
+
+            // Gráfico 1: Proventos Totais
+            const ctx1 = document.getElementById('monthlyDividendsChart').getContext('2d');
+            if (dividendsChart) dividendsChart.destroy();
+
+            dividendsChart = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Recebido (R$)',
+                        data: totalValues,
+                        backgroundColor: bgColors,
+                        borderColor: bdrColors,
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        maxBarThickness: 50
+                    }]
                 },
-                datalabels: {
-                  color: '#ffffff',
-                  font: { weight: 'bold', size: 13 },
-                  formatter: function(value, ctx) {
-                    const dataset = ctx.chart.data.datasets[0].data;
-                    const totalAtual = dataset.reduce((acc, curr) => acc + curr, 0);
-
-                    if (!totalAtual || totalAtual === 0) return '0%';
-
-                    const pct = ((value / totalAtual) * 100).toFixed(1);
-                    return `${pct}%`;
-                  }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)}` } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#ffffff', font: { weight: 'bold', size: 12 } } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
+                    }
                 }
-              }
-            }
-          });
+            });
+
+            // Gráfico 2: Proventos por Cota
+            const ctx2 = document.getElementById('perShareDividendsChart').getContext('2d');
+            if (perShareChart) perShareChart.destroy();
+
+            perShareChart = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Provento por Cota (R$)',
+                        data: perShareValues,
+                        backgroundColor: bgColors,
+                        borderColor: bdrColors,
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        maxBarThickness: 50
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)} por cota` } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#ffffff', font: { weight: 'bold', size: 12 } } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
+                    }
+                }
+            });
+
+            // Gráfico 3: Histórico de Proventos Mês a Mês (com rótulos nas barras)
+            const ctx3 = document.getElementById('historicalDividendsChart').getContext('2d');
+            if (historicalChart) historicalChart.destroy();
+
+            historicalChart = new Chart(ctx3, {
+                type: 'bar',
+                data: {
+                    labels: historyLabels,
+                    datasets: [{
+                        label: 'Total no Mês (R$)',
+                        data: historyValues,
+                        backgroundColor: 'rgba(34, 211, 238, 0.75)',
+                        borderColor: 'rgba(34, 211, 238, 1)',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        maxBarThickness: 40
+                    }]
+                },
+                plugins: [{
+                    id: 'barLabelsPlugin',
+                    afterDatasetsDraw(chart) {
+                        const { ctx } = chart;
+                        chart.data.datasets.forEach((dataset, datasetIndex) => {
+                            const meta = chart.getDatasetMeta(datasetIndex);
+                            meta.data.forEach((bar, index) => {
+                                const value = dataset.data[index];
+                                if (value > 0) {
+                                    ctx.save();
+                                    ctx.fillStyle = '#38bdf8';
+                                    ctx.font = 'bold 10px sans-serif';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'bottom';
+                                    ctx.fillText(`R$ ${value.toFixed(2)}`, bar.x, bar.y - 4);
+                                    ctx.restore();
+                                }
+                            });
+                        });
+                    }
+                }],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            top: 20
+                        }
+                    },
+                    plugins: { 
+                        legend: { display: false }, 
+                        tooltip: { callbacks: { label: c => ` R$ ${c.raw.toFixed(2)}` } } 
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#ffffff', font: { size: 11 }, callback: v => 'R$ ' + v.toFixed(2) } }
+                    }
+                }
+            });
         }
-      }
-    }
-
-    function formatarDataBR(dataIso) {
-      if (!dataIso) return '-';
-      const partes = dataIso.split('-');
-      if (partes.length !== 3) return dataIso;
-      return `${partes[2]}/${partes[1]}/${partes[0]}`;
-    }
-
-    function renderizarTabela() {
-      const tabela = document.getElementById('tabelaCorpo');
-      tabela.innerHTML = '';
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-
-      let equipamentosVencidos = 0;
-      let equipamentosEmDia = 0;
-      let arrayVencidos = [];
-
-      equipamentos.forEach((item, index) => {
-        const dProxima = item.proximaTroca ? new Date(item.proximaTroca + 'T00:00:00') : hoje;
-        const diasRestantes = Math.round((dProxima - hoje) / (1000 * 60 * 60 * 24));
-        
-        let badgeStatus = '<span class="px-2 py-1 text-xs rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">Agendado</span>';
-        const tipoAtivo = item.tipo || "Equipamento";
-        
-        let badgeTipo = tipoAtivo === 'Componente' 
-          ? '<span class="px-2 py-0.5 text-[11px] rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-medium">Componente</span>'
-          : '<span class="px-2 py-0.5 text-[11px] rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">Equipamento</span>';
-
-        if (diasRestantes < 0) {
-          badgeStatus = '<span class="px-2 py-1 text-xs rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">Atrasado</span>';
-          equipamentosVencidos++;
-          
-          const diasAtraso = Math.abs(diasRestantes);
-          arrayVencidos.push({
-            item,
-            tipoAtivo,
-            diasAtraso,
-            badgeTipo
-          });
-        } else {
-          equipamentosEmDia++;
-          if (diasRestantes <= 30) {
-            badgeStatus = '<span class="px-2 py-1 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">Próximo (30d)</span>';
-          }
-        }
-
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-700/20 transition';
-        tr.innerHTML = `
-          <td class="px-6 py-4 font-mono text-xs text-blue-400">${item.id}</td>
-          <td class="px-6 py-4">${badgeTipo}</td>
-          <td class="px-6 py-4 font-medium text-white">${item.nome}</td>
-          <td class="px-6 py-4">${item.usuario}</td>
-          <td class="px-6 py-4">${formatarDataBR(item.ultimaTroca)}</td>
-          <td class="px-6 py-4">${item.periodicidade} meses</td>
-          <td class="px-6 py-4 font-medium text-amber-400">${formatarDataBR(item.proximaTroca)}</td>
-          <td class="px-6 py-4">${badgeStatus}</td>
-          <td class="px-6 py-4 text-center">
-            <div class="flex items-center justify-center gap-1">
-              <button onclick="solicitarSenhaEdicao(${index})" title="Editar" class="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition">
-                <i data-lucide="edit-3" class="w-4 h-4"></i>
-              </button>
-              <button onclick="excluirEquipamento(${index})" title="Eliminar" class="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-rose-400 transition">
-                <i data-lucide="trash-2" class="w-4 h-4"></i>
-              </button>
-            </div>
-          </td>
-        `;
-        tabela.appendChild(tr);
-      });
-
-      // Ordenar itens vencidos conforme a nova regra:
-      // 1. Componentes primeiro (tipoAtivo === 'Componente'), depois Equipamentos.
-      // 2. Maior tempo vencido primeiro (diasAtraso decrescente).
-      arrayVencidos.sort((a, b) => {
-        const isCompA = a.tipoAtivo === 'Componente' ? 1 : 0;
-        const isCompB = b.tipoAtivo === 'Componente' ? 1 : 0;
-
-        if (isCompA !== isCompB) {
-          return isCompB - isCompA; // Componentes (1) vêm antes de Equipamentos (0)
-        }
-        return b.diasAtraso - a.diasAtraso; // Maior tempo vencido primeiro
-      });
-
-      let listaVencidosHTML = '';
-      arrayVencidos.forEach(v => {
-        listaVencidosHTML += `
-          <div class="bg-slate-900/60 border border-rose-500/30 rounded-xl p-3 flex flex-col justify-between gap-2 shadow-sm">
-            <div class="flex justify-between items-start">
-              <span class="font-mono text-xs text-rose-400 font-semibold">${v.item.id}</span>
-              <span class="text-xs bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-md font-bold">${v.diasAtraso} ${v.diasAtraso === 1 ? 'dia de atraso' : 'dias de atraso'}</span>
-            </div>
-            <div>
-              <div class="mb-1">${v.badgeTipo}</div>
-              <h4 class="text-white text-sm font-semibold truncate">${v.item.nome}</h4>
-              <p class="text-xs text-slate-400">Usuário: <span class="text-slate-200">${v.item.usuario}</span></p>
-            </div>
-            <div class="text-[11px] text-slate-400 border-t border-slate-800 pt-1 mt-1 flex justify-between">
-              <span>Vencimento: <strong class="text-slate-300">${formatarDataBR(v.item.proximaTroca)}</strong></span>
-            </div>
-          </div>
-        `;
-      });
-
-      // Atualizar bloco visual de vencidos
-      const containerVencidos = document.getElementById('listaEquipamentosVencidos');
-      const badgeVencidosCount = document.getElementById('contadorVencidosBadge');
-      
-      if (equipamentosVencidos === 0) {
-        containerVencidos.innerHTML = `
-          <div class="col-span-full py-6 text-center text-slate-400 text-sm flex flex-col items-center justify-center gap-2">
-            <i data-lucide="shield-check" class="w-8 h-8 text-emerald-400"></i>
-            <span>Nenhum ativo vencido no momento. Todos estão em dia!</span>
-          </div>
-        `;
-        badgeVencidosCount.innerText = '0 pendências';
-      } else {
-        containerVencidos.innerHTML = listaVencidosHTML;
-        badgeVencidosCount.innerText = `${equipamentosVencidos} ${equipamentosVencidos === 1 ? 'pendência' : 'pendências'}`;
-      }
-
-      lucide.createIcons();
-      document.getElementById('totalRegistros').innerText = `Exibindo ${equipamentos.length} registro${equipamentos.length === 1 ? '' : 's'}`;
-      document.getElementById('kpiEquipamentosEmDia').innerText = equipamentosEmDia;
-      document.getElementById('kpiTrocasPendentes').innerText = equipamentosVencidos;
-
-      atualizarGraficos(equipamentosEmDia, equipamentosVencidos);
-    }
-
-    function solicitarSenhaCadastro() {
-      acaoAposSenha = () => abrirModalCadastro();
-      abrirModalSenha();
-    }
-
-    function solicitarSenhaEdicao(index) {
-      acaoAposSenha = () => abrirModalEdicao(index);
-      abrirModalSenha();
-    }
-
-    function abrirModalSenha() {
-      document.getElementById('inputSenhaMaster').value = '';
-      const modal = document.getElementById('modalSenha');
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    function fecharModalSenha() {
-      const modal = document.getElementById('modalSenha');
-      modal.classList.remove('flex');
-      modal.classList.add('hidden');
-    }
-
-    function verificarSenha() {
-      const senhaInformada = document.getElementById('inputSenhaMaster').value;
-
-      if (senhaInformada === "MMAVC") {
-        fecharModalSenha();
-        if (acaoAposSenha) {
-          const callback = acaoAposSenha;
-          acaoAposSenha = null;
-          setTimeout(() => {
-            callback();
-          }, 150);
-        }
-      } else {
-        mostrarToast("Senha incorreta! Acesso negado.", true);
-      }
-    }
-
-    function abrirModalCadastro() {
-      document.getElementById('inputIndex').value = "-1";
-      document.getElementById('modalTitulo').innerText = 'Cadastrar Ativo';
-      document.getElementById('formEquipamento').reset();
-      document.getElementById('inputTipo').value = 'Equipamento';
-      document.getElementById('inputPeriodicidade').value = 36;
-      
-      const modal = document.getElementById('modalEquipamento');
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    function abrirModalEdicao(index) {
-      const item = equipamentos[index];
-      document.getElementById('inputIndex').value = index;
-      document.getElementById('modalTitulo').innerText = 'Editar Ativo';
-      document.getElementById('inputID').value = item.id;
-      document.getElementById('inputTipo').value = item.tipo || 'Equipamento';
-      document.getElementById('inputNome').value = item.nome;
-      document.getElementById('inputUsuario').value = item.usuario;
-      document.getElementById('inputUltimaTroca').value = item.ultimaTroca || '';
-      document.getElementById('inputPeriodicidade').value = item.periodicidade || 36;
-      document.getElementById('inputDataPrevista').value = item.proximaTroca || '';
-      
-      const modal = document.getElementById('modalEquipamento');
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    function fecharModal() {
-      const modal = document.getElementById('modalEquipamento');
-      modal.classList.remove('flex');
-      modal.classList.add('hidden');
-    }
-
-    function calcularProximaTroca() {
-      const dataUltima = document.getElementById('inputUltimaTroca').value;
-      const meses = parseInt(document.getElementById('inputPeriodicidade').value) || 0;
-
-      if (dataUltima && meses > 0) {
-        const data = new Date(dataUltima + 'T00:00:00');
-        data.setMonth(data.getMonth() + meses);
-        document.getElementById('inputDataPrevista').value = data.toISOString().split('T')[0];
-      }
-    }
-
-    function salvarFormulario(event) {
-      event.preventDefault();
-
-      const index = parseInt(document.getElementById('inputIndex').value);
-      const itemNovo = {
-        id: document.getElementById('inputID').value,
-        tipo: document.getElementById('inputTipo').value,
-        nome: document.getElementById('inputNome').value,
-        usuario: document.getElementById('inputUsuario').value,
-        ultimaTroca: document.getElementById('inputUltimaTroca').value,
-        periodicidade: parseInt(document.getElementById('inputPeriodicidade').value),
-        proximaTroca: document.getElementById('inputDataPrevista').value,
-        status: "Agendado"
-      };
-
-      if (index >= 0) {
-        equipamentos[index] = itemNovo;
-      } else {
-        equipamentos.push(itemNovo);
-      }
-
-      renderizarTabela();
-      fecharModal();
-      atualizarStatusNuvem('pendente', 'Alterações pendentes (Clique em Salvar)');
-      mostrarToast("Alteração registrada! Clique em 'Salvar na Nuvem'.");
-    }
-
-    function excluirEquipamento(index) {
-      if (confirm('Tem certeza que deseja eliminar este registro?')) {
-        equipamentos.splice(index, 1);
-        renderizarTabela();
-        atualizarStatusNuvem('pendente', 'Alterações pendentes (Clique em Salvar)');
-        mostrarToast("Ativo removido. Clique em 'Salvar na Nuvem'.");
-      }
-    }
-  </script>
+    </script>
 </body>
 </html>
